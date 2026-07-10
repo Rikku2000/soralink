@@ -1,0 +1,935 @@
+<ch_List>
+<ch type="TV" pol="H" sym="22000" s_id="11110" ts_id="1011" freq="11362" prog_idx="1085734912" lcn="1" s_name="ZDF HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="10301" ts_id="1019" freq="11494" prog_idx="1086128129" lcn="2" s_name="Das Erste HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="4914" ts_id="1007" freq="11303" prog_idx="1085538306" lcn="3" s_name="DF1 HD" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28805" ts_id="1091" freq="12226" prog_idx="1088290819" lcn="4" s_name="VOX Austria" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28800" ts_id="1091" freq="12226" prog_idx="1088290820" lcn="5" s_name="RTL Austria" fta="1" />
+<ch type="TV" pol="V" sym="27500" s_id="20002" ts_id="1082" freq="12051" prog_idx="1087766533" lcn="6" s_name="ProSieben Austria" fta="1" />
+<ch type="TV" pol="V" sym="27500" s_id="20005" ts_id="1082" freq="12051" prog_idx="1087766534" lcn="7" s_name="SAT.1 A" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="11130" ts_id="1011" freq="11362" prog_idx="1085734919" lcn="8" s_name="zdf_neo HD" fta="1" />
+<ch type="TV" pol="V" sym="27500" s_id="20004" ts_id="1082" freq="12051" prog_idx="1087766536" lcn="9" s_name="Kabel 1 Austria" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28810" ts_id="1091" freq="12226" prog_idx="1088290825" lcn="10" s_name="RTLZWEI Austria" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="11150" ts_id="1010" freq="11347" prog_idx="1085669386" lcn="11" s_name="3sat HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="5310" ts_id="1031" freq="11671" prog_idx="1086652427" lcn="12" s_name="SAT.1 Gold Österreich" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="11170" ts_id="1010" freq="11347" prog_idx="1085669388" lcn="13" s_name="ZDFinfo HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13229" ts_id="1003" freq="11244" prog_idx="1085276173" lcn="14" s_name="RTLup Austria" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="10325" ts_id="1025" freq="11582" prog_idx="1086455822" lcn="15" s_name="BR Fernsehen Süd HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13314" ts_id="1005" freq="11273" prog_idx="1085407247" lcn="16" s_name="oe24.TV HD" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10405" ts_id="1039" freq="11053" prog_idx="1218773008" lcn="134" s_name="BR24live" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13102" ts_id="1115" freq="12663" prog_idx="1089404945" lcn="17" s_name="NITRO Austria" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="10302" ts_id="1019" freq="11494" prog_idx="1086128146" lcn="18" s_name="arte HD" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28815" ts_id="1091" freq="12226" prog_idx="1088290835" lcn="19" s_name="SUPER RTL A" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="10376" ts_id="1039" freq="11053" prog_idx="1084555284" lcn="20" s_name="ONE HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="5309" ts_id="1031" freq="11671" prog_idx="1086652437" lcn="21" s_name="sixx AUSTRIA" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="5312" ts_id="1031" freq="11671" prog_idx="1086652438" lcn="22" s_name="kabel1 Doku austria" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="71" ts_id="7" freq="12148" prog_idx="1088028695" lcn="23" s_name="TLC Austria" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="10303" ts_id="1019" freq="11494" prog_idx="1086128152" lcn="24" s_name="SWR BW HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="10327" ts_id="1025" freq="11582" prog_idx="1086455833" lcn="25" s_name="NDR FS NDS HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="10331" ts_id="1025" freq="11582" prog_idx="1086455834" lcn="26" s_name="phoenix HD" fta="1" />
+<ch type="TV" pol="V" sym="27500" s_id="51" ts_id="33" freq="12480" prog_idx="1088880667" lcn="27" s_name="TELE 5" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="73" ts_id="7" freq="12148" prog_idx="1088028700" lcn="28" s_name="DMAX Austria" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="5311" ts_id="1031" freq="11671" prog_idx="1086652445" lcn="29" s_name="Pro7 MAXX Austria" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13021" ts_id="1117" freq="12692" prog_idx="1089470494" lcn="30" s_name="ntv Austria" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="28342" ts_id="1021" freq="11523" prog_idx="1086259231" lcn="31" s_name="WDR HD Wuppertal" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="31200" ts_id="1091" freq="12226" prog_idx="1088290848" lcn="32" s_name="Eurosport 1 Deutschland" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="10352" ts_id="1061" freq="10891" prog_idx="1084031009" lcn="33" s_name="MDR Sachsen HD" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="48" ts_id="5" freq="12460" prog_idx="1088815138" lcn="34" s_name="N24 DOKU" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10407" ts_id="1039" freq="11053" prog_idx="1218773027" lcn="136" s_name="PULS" fta="1" />
+<ch type="RADIO" pol="H" sym="27500" s_id="28012" ts_id="1079" freq="11954" prog_idx="1221656612" lcn="240" s_name="Dlf Kultur" fta="1" />
+<ch type="RADIO" pol="H" sym="27500" s_id="28013" ts_id="1079" freq="11954" prog_idx="1221656613" lcn="241" s_name="Dlf" fta="1" />
+<ch type="RADIO" pol="H" sym="27500" s_id="28015" ts_id="1079" freq="11954" prog_idx="1221656614" lcn="243" s_name="DRadio DokDeb" fta="1" />
+<ch type="RADIO" pol="H" sym="27500" s_id="28017" ts_id="1079" freq="11954" prog_idx="1221656615" lcn="244" s_name="Dlf Nova" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9140" ts_id="1094" freq="12285" prog_idx="1222574120" lcn="301" s_name="FUN RADIO" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9143" ts_id="1094" freq="12285" prog_idx="1222574121" lcn="303" s_name="BBC ARABIC" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9165" ts_id="1094" freq="12285" prog_idx="1222574122" lcn="314" s_name="RTL" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9176" ts_id="1094" freq="12285" prog_idx="1222574123" lcn="318" s_name="OUI FM" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9186" ts_id="1094" freq="12285" prog_idx="1222574124" lcn="328" s_name="RTL2" fta="1" />
+<ch type="RADIO" pol="H" sym="27500" s_id="172" ts_id="5" freq="12460" prog_idx="1223032877" lcn="343" s_name="egoFM" fta="1" />
+<ch type="RADIO" pol="H" sym="27500" s_id="177" ts_id="5" freq="12460" prog_idx="1223032878" lcn="345" s_name="JAM FM" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="12658" ts_id="1113" freq="12633" prog_idx="1223557167" lcn="417" s_name="Schlager Radio" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="12659" ts_id="1113" freq="12633" prog_idx="1223557168" lcn="418" s_name="Radio Gloria" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="12660" ts_id="1113" freq="12633" prog_idx="1223557169" lcn="419" s_name="HIT RADIO FFH" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="12661" ts_id="1113" freq="12633" prog_idx="1223557170" lcn="420" s_name="planet radio" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="12662" ts_id="1113" freq="12633" prog_idx="1223557171" lcn="421" s_name="harmony.fm" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="12664" ts_id="1113" freq="12633" prog_idx="1223557172" lcn="422" s_name="Schlager Radio" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="13121" ts_id="1115" freq="12663" prog_idx="1223622709" lcn="428" s_name="OE1" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="13122" ts_id="1115" freq="12663" prog_idx="1223622710" lcn="429" s_name="OE1 DD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="10355" ts_id="1061" freq="10891" prog_idx="1084031031" lcn="35" s_name="hr-fernsehen HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="17503" ts_id="1107" freq="12545" prog_idx="1089077304" lcn="36" s_name="WELT" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="1793" ts_id="5" freq="12460" prog_idx="1088815161" lcn="37" s_name="Disney Channel" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28008" ts_id="1079" freq="11954" prog_idx="1087438906" lcn="38" s_name="Astra Demo" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="10351" ts_id="1061" freq="10891" prog_idx="1084031035" lcn="39" s_name="rbb Berlin HD" fta="1" />
+<ch type="TV" pol="V" sym="27500" s_id="28676" ts_id="1078" freq="11973" prog_idx="1087504444" lcn="40" s_name="Comedy Central" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13317" ts_id="1005" freq="11273" prog_idx="1085407293" lcn="41" s_name="Melodie TV NEU" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="10377" ts_id="1039" freq="11053" prog_idx="1084555326" lcn="42" s_name="ARD alpha HD" fta="1" />
+<ch type="TV" pol="V" sym="27500" s_id="900" ts_id="33" freq="12480" prog_idx="1088880703" lcn="43" s_name="SPORT1" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="12601" ts_id="1113" freq="12633" prog_idx="1089339456" lcn="44" s_name="K-TV" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13014" ts_id="1117" freq="12692" prog_idx="1089470529" lcn="45" s_name="ORF2E" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="10375" ts_id="1039" freq="11053" prog_idx="1084555330" lcn="46" s_name="tagesschau24 HD" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="13123" ts_id="1115" freq="12663" prog_idx="1223622723" lcn="430" s_name="OE2 W" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="13124" ts_id="1115" freq="12663" prog_idx="1223622724" lcn="431" s_name="OE2 N" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="13125" ts_id="1115" freq="12663" prog_idx="1223622725" lcn="432" s_name="OE2 B" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="13126" ts_id="1115" freq="12663" prog_idx="1223622726" lcn="433" s_name="OE2 O" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="13127" ts_id="1115" freq="12663" prog_idx="1223622727" lcn="434" s_name="OE2 S" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="13128" ts_id="1115" freq="12663" prog_idx="1223622728" lcn="435" s_name="OE2 T" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="13129" ts_id="1115" freq="12663" prog_idx="1223622729" lcn="436" s_name="OE2 V" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="13130" ts_id="1115" freq="12663" prog_idx="1223622730" lcn="437" s_name="OE2 St" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="13131" ts_id="1115" freq="12663" prog_idx="1223622731" lcn="438" s_name="OE2 K" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="13133" ts_id="1115" freq="12663" prog_idx="1223622732" lcn="439" s_name="OE3" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="13134" ts_id="1115" freq="12663" prog_idx="1223622733" lcn="440" s_name="FM4" fta="1" />
+<ch type="RADIO" pol="V" sym="22000" s_id="30104" ts_id="1058" freq="10847" prog_idx="1218052174" lcn="500" s_name="TEST RA ESP" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10465" ts_id="1061" freq="10891" prog_idx="1218248783" lcn="533" s_name="hr1" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10466" ts_id="1061" freq="10891" prog_idx="1218248784" lcn="534" s_name="hr2" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10467" ts_id="1061" freq="10891" prog_idx="1218248785" lcn="535" s_name="hr3" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10468" ts_id="1061" freq="10891" prog_idx="1218248786" lcn="536" s_name="hr4" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10469" ts_id="1061" freq="10891" prog_idx="1218248787" lcn="537" s_name="DASDING vom hr" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10470" ts_id="1061" freq="10891" prog_idx="1218248788" lcn="538" s_name="hr INFO" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10474" ts_id="1061" freq="10891" prog_idx="1218248789" lcn="539" s_name="MDR SACHSEN DD" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10475" ts_id="1061" freq="10891" prog_idx="1218248790" lcn="540" s_name="MDR S-ANHALT MD" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10476" ts_id="1061" freq="10891" prog_idx="1218248791" lcn="541" s_name="MDR THÜR Mitte-W" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10477" ts_id="1061" freq="10891" prog_idx="1218248792" lcn="542" s_name="MDR KULTUR" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10478" ts_id="1061" freq="10891" prog_idx="1218248793" lcn="543" s_name="MDR JUMP" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10479" ts_id="1061" freq="10891" prog_idx="1218248794" lcn="544" s_name="MDR SPUTNIK" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10480" ts_id="1061" freq="10891" prog_idx="1218248795" lcn="545" s_name="MDR AKTUELL" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10481" ts_id="1061" freq="10891" prog_idx="1218248796" lcn="546" s_name="MDR KLASSIK" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10484" ts_id="1061" freq="10891" prog_idx="1218248797" lcn="547" s_name="rbb24 Inforadio" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10485" ts_id="1061" freq="10891" prog_idx="1218248798" lcn="548" s_name="radio3" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10486" ts_id="1061" freq="10891" prog_idx="1218248799" lcn="549" s_name="Antenne Brbg." fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10487" ts_id="1061" freq="10891" prog_idx="1218248800" lcn="550" s_name="rbb 88.8" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10488" ts_id="1061" freq="10891" prog_idx="1218248801" lcn="551" s_name="radioeins" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10489" ts_id="1061" freq="10891" prog_idx="1218248802" lcn="552" s_name="Fritz" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10400" ts_id="1039" freq="11053" prog_idx="1218773091" lcn="619" s_name="Bayern 1" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10401" ts_id="1039" freq="11053" prog_idx="1218773092" lcn="620" s_name="Bayern 2" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10402" ts_id="1039" freq="11053" prog_idx="1218773093" lcn="621" s_name="BAYERN 3" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10403" ts_id="1039" freq="11053" prog_idx="1218773094" lcn="622" s_name="BR-KLASSIK" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10404" ts_id="1039" freq="11053" prog_idx="1218773095" lcn="623" s_name="BR24" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10406" ts_id="1039" freq="11053" prog_idx="1218773096" lcn="624" s_name="BR Schlager" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10408" ts_id="1039" freq="11053" prog_idx="1218773097" lcn="625" s_name="BR-Heimat" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10412" ts_id="1039" freq="11053" prog_idx="1218773098" lcn="626" s_name="NDR 2 NDS" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10413" ts_id="1039" freq="11053" prog_idx="1218773099" lcn="627" s_name="NDR Kultur" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10414" ts_id="1039" freq="11053" prog_idx="1218773100" lcn="628" s_name="NDR Info NDS" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10415" ts_id="1039" freq="11053" prog_idx="1218773101" lcn="629" s_name="N-JOY" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10416" ts_id="1039" freq="11053" prog_idx="1218773102" lcn="630" s_name="NDR 90,3" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10417" ts_id="1039" freq="11053" prog_idx="1218773103" lcn="631" s_name="NDR1 Welle Nord KI" fta="1" />
+<ch type="TV" pol="V" sym="29500" s_id="5710" ts_id="1068" freq="11778" prog_idx="1086914672" lcn="47" s_name="CNN Int." fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="12122" ts_id="1108" freq="12552" prog_idx="1089142897" lcn="48" s_name="Bibel TV" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="31230" ts_id="1091" freq="12226" prog_idx="1088290930" lcn="49" s_name="EURONEWS GERMAN SD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13225" ts_id="1003" freq="11244" prog_idx="1085276275" lcn="50" s_name="Schau TV HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13104" ts_id="1115" freq="12663" prog_idx="1089405044" lcn="51" s_name="LT1-OOE" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13313" ts_id="1005" freq="11273" prog_idx="1085407349" lcn="52" s_name="krone.tv" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13103" ts_id="1115" freq="12663" prog_idx="1089405046" lcn="53" s_name="DOKUSAT SD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13312" ts_id="1005" freq="11273" prog_idx="1085407351" lcn="54" s_name="R9 Oesterreich HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="21100" ts_id="1053" freq="10773" prog_idx="1083506808" lcn="55" s_name="AnixeHD Serie" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13019" ts_id="1117" freq="12692" prog_idx="1089470585" lcn="56" s_name="RiC" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="65" ts_id="7" freq="12148" prog_idx="1088028794" lcn="57" s_name="DELUXE MUSIC" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13226" ts_id="1003" freq="11244" prog_idx="1085276283" lcn="58" s_name="StarParadies AT" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="5001" ts_id="1002" freq="11229" prog_idx="1085210748" lcn="59" s_name="BBC News" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="7290" ts_id="1111" freq="12604" prog_idx="1089273981" lcn="60" s_name="Sky News Intl" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13141" ts_id="1115" freq="12663" prog_idx="1089405054" lcn="61" s_name="EWTN katholisches TV HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="5801" ts_id="1023" freq="11553" prog_idx="1086390399" lcn="62" s_name="münchen.tv HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="12604" ts_id="1113" freq="12633" prog_idx="1089339520" lcn="63" s_name="TELEGOLD SD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13015" ts_id="1117" freq="12692" prog_idx="1089470593" lcn="64" s_name="Mei Musi " fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="5808" ts_id="1023" freq="11553" prog_idx="1086390402" lcn="65" s_name="OTVA HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13311" ts_id="1005" freq="11273" prog_idx="1085407363" lcn="66" s_name="Aristo TV" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="5804" ts_id="1023" freq="11553" prog_idx="1086390404" lcn="67" s_name="tv.ingolstadt HD" fta="1" />
+<ch type="TV" pol="V" sym="27500" s_id="76" ts_id="33" freq="12480" prog_idx="1088880773" lcn="68" s_name="Baden TV" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="28721" ts_id="1051" freq="10744" prog_idx="1083375750" lcn="69" s_name="tagesschau24" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="28722" ts_id="1051" freq="10744" prog_idx="1083375751" lcn="70" s_name="ONE" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10418" ts_id="1039" freq="11053" prog_idx="1218773128" lcn="632" s_name="NDR 1 Radio MV SN" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="28724" ts_id="1051" freq="10744" prog_idx="1083375753" lcn="71" s_name="arte" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10419" ts_id="1039" freq="11053" prog_idx="1218773130" lcn="633" s_name="NDR 1 Nieders. HAN" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="28725" ts_id="1051" freq="10744" prog_idx="1083375755" lcn="72" s_name="phoenix" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="28726" ts_id="1051" freq="10744" prog_idx="1083375756" lcn="73" s_name="Test-R" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="21112" ts_id="1053" freq="10773" prog_idx="1083506829" lcn="77" s_name="Nicer Dicer TV" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="21113" ts_id="1053" freq="10773" prog_idx="1083506830" lcn="78" s_name="Genius Plus" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="33" ts_id="15" freq="10921" prog_idx="1084162191" lcn="120" s_name="Genius family" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="31307" ts_id="1040" freq="11068" prog_idx="1084620944" lcn="174" s_name="I24 Francis" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="31303" ts_id="1040" freq="11068" prog_idx="1084620945" lcn="178" s_name="Promo TSA" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="4713" ts_id="1015" freq="11421" prog_idx="1085931666" lcn="193" s_name="Die Neue Zeit TV" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="7012" ts_id="1020" freq="11509" prog_idx="1086193811" lcn="195" s_name="Arirang  HD" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="4422" ts_id="1028" freq="11627" prog_idx="1086587028" lcn="220" s_name="CNN Int." fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="30203" ts_id="1032" freq="11686" prog_idx="1086718101" lcn="222" s_name="." fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="30219" ts_id="1032" freq="11686" prog_idx="1086718102" lcn="223" s_name="TEST ANCAM10" fta="1" />
+<ch type="TV" pol="V" sym="29500" s_id="5721" ts_id="1068" freq="11778" prog_idx="1086914711" lcn="227" s_name="UA:Pershyi" fta="1" />
+<ch type="TV" pol="V" sym="29500" s_id="5741" ts_id="1068" freq="11778" prog_idx="1086914712" lcn="228" s_name="MALYATKO TV" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28108" ts_id="1101" freq="11836" prog_idx="1087111321" lcn="231" s_name="hr-fernsehen" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28111" ts_id="1101" freq="11836" prog_idx="1087111322" lcn="233" s_name="WDR Köln" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28113" ts_id="1101" freq="11836" prog_idx="1087111323" lcn="234" s_name="SWR Fernsehen BW" fta="1" />
+<ch type="TV" pol="V" sym="27500" s_id="28670" ts_id="1078" freq="11973" prog_idx="1087504540" lcn="249" s_name="Nickelodeon Ukraine Plu" fta="1" />
+<ch type="TV" pol="V" sym="27500" s_id="20001" ts_id="1082" freq="12051" prog_idx="1087766685" lcn="252" s_name="ProSieben Schweiz" fta="1" />
+<ch type="TV" pol="V" sym="27500" s_id="20003" ts_id="1082" freq="12051" prog_idx="1087766686" lcn="253" s_name="Kabel 1 Schweiz" fta="1" />
+<ch type="TV" pol="V" sym="27500" s_id="20006" ts_id="1082" freq="12051" prog_idx="1087766687" lcn="254" s_name="SAT.1 CH" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="125" ts_id="8" freq="12070" prog_idx="1087832224" lcn="258" s_name="CNBC HD" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28206" ts_id="1073" freq="12110" prog_idx="1087963297" lcn="260" s_name="rbb Berlin" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="53" ts_id="7" freq="12148" prog_idx="1088028834" lcn="270" s_name="N24 DOKU Austria" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="54" ts_id="7" freq="12148" prog_idx="1088028835" lcn="271" s_name="Genius exklusiv" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="514" ts_id="7" freq="12148" prog_idx="1088028836" lcn="276" s_name="Immer etwas Neues TV" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="765" ts_id="7" freq="12148" prog_idx="1088028837" lcn="277" s_name="pearl.tv Shop" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="774" ts_id="7" freq="12148" prog_idx="1088028838" lcn="279" s_name="FOLX MUSIC TELEVISION" fta="1" />
+<ch type="TV" pol="V" sym="29700" s_id="9311" ts_id="1088" freq="12168" prog_idx="1088094375" lcn="281" s_name="BARKER COLLECTIVITES SD" fta="1" />
+<ch type="TV" pol="V" sym="29700" s_id="9015" ts_id="1090" freq="12207" prog_idx="1088225448" lcn="296" s_name="LCP" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="31220" ts_id="1091" freq="12226" prog_idx="1088290985" lcn="299" s_name="EURONEWS FRENCH SD" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28395" ts_id="1201" freq="12422" prog_idx="1088749738" lcn="340" s_name="WDR Test A" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="64" ts_id="5" freq="12460" prog_idx="1088815275" lcn="342" s_name="QVC STYLE" fta="1" />
+<ch type="TV" pol="V" sym="27500" s_id="897" ts_id="33" freq="12480" prog_idx="1088880812" lcn="359" s_name="Genius Trend" fta="1" />
+<ch type="TV" pol="V" sym="27500" s_id="898" ts_id="33" freq="12480" prog_idx="1088880813" lcn="360" s_name="MediaShop- Neuheiten" fta="1" />
+<ch type="TV" pol="V" sym="27500" s_id="899" ts_id="33" freq="12480" prog_idx="1088880814" lcn="361" s_name="meinTVshop" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="6801" ts_id="1106" freq="12522" prog_idx="1089011887" lcn="362" s_name="CGTN News HD" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="6802" ts_id="1106" freq="12522" prog_idx="1089011888" lcn="363" s_name="CGTN Documentary HD" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="6803" ts_id="1106" freq="12522" prog_idx="1089011889" lcn="364" s_name="CGTN Francais HD" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="3394" ts_id="1108" freq="12552" prog_idx="1089142962" lcn="373" s_name="QVC2" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="12600" ts_id="1113" freq="12633" prog_idx="1089339571" lcn="388" s_name="health.tv" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="12612" ts_id="1113" freq="12633" prog_idx="1089339572" lcn="389" s_name="GayBoys LIVE" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="12614" ts_id="1113" freq="12633" prog_idx="1089339573" lcn="390" s_name="rhein main tv" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="12618" ts_id="1113" freq="12633" prog_idx="1089339574" lcn="392" s_name="Dreamgirls24 TV temp" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="12619" ts_id="1113" freq="12633" prog_idx="1089339575" lcn="393" s_name="Erotiksat24 TV temp" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="12621" ts_id="1113" freq="12633" prog_idx="1089339576" lcn="394" s_name="MBS - Test1" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="12629" ts_id="1113" freq="12633" prog_idx="1089339577" lcn="400" s_name="Traumfrauen TV" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="12630" ts_id="1113" freq="12633" prog_idx="1089339578" lcn="401" s_name="Heiss und Sexy TV" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="12633" ts_id="1113" freq="12633" prog_idx="1089339579" lcn="402" s_name="Lilo TV" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="12634" ts_id="1113" freq="12633" prog_idx="1089339580" lcn="403" s_name="nice" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="12643" ts_id="1113" freq="12633" prog_idx="1089339581" lcn="408" s_name="ALT Sendersuchlauf star" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="12644" ts_id="1113" freq="12633" prog_idx="1089339582" lcn="409" s_name="Schlager Radio" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="12645" ts_id="1113" freq="12633" prog_idx="1089339583" lcn="410" s_name="MBS - Test6" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="12646" ts_id="1113" freq="12633" prog_idx="1089339584" lcn="411" s_name="MBS - Test4" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="12647" ts_id="1113" freq="12633" prog_idx="1089339585" lcn="412" s_name="MBS - Test5" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13013" ts_id="1117" freq="12692" prog_idx="1089470658" lcn="442" s_name="HITRADIO OE3" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13018" ts_id="1117" freq="12692" prog_idx="1089470659" lcn="443" s_name="Volksmusik.TV" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13022" ts_id="1117" freq="12692" prog_idx="1089470660" lcn="444" s_name="Wir24TV" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13023" ts_id="1117" freq="12692" prog_idx="1089470661" lcn="445" s_name="TV1 OOE NEU" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="29850" ts_id="1052" freq="10758" prog_idx="1083441350" lcn="446" s_name="Movistar Plus HD" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="29851" ts_id="1052" freq="10758" prog_idx="1083441351" lcn="447" s_name="LALIGA TV HYPERMOTION" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="29853" ts_id="1052" freq="10758" prog_idx="1083441352" lcn="448" s_name="DAZN Mundial2 HD" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="29854" ts_id="1052" freq="10758" prog_idx="1083441353" lcn="449" s_name="M+LCAMPEON2" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="29855" ts_id="1052" freq="10758" prog_idx="1083441354" lcn="450" s_name="M+LCAMPEON3 (HD)" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="29856" ts_id="1052" freq="10758" prog_idx="1083441355" lcn="451" s_name="TEST DZ5." fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="29858" ts_id="1052" freq="10758" prog_idx="1083441356" lcn="452" s_name="MEZZO LIVE" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="29859" ts_id="1052" freq="10758" prog_idx="1083441357" lcn="453" s_name="M+ LALIGA 3 HD" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="29864" ts_id="1052" freq="10758" prog_idx="1083441358" lcn="454" s_name="M+ VAMOS 2 HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="21103" ts_id="1053" freq="10773" prog_idx="1083506895" lcn="455" s_name="QVC HD" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10420" ts_id="1039" freq="11053" prog_idx="1218773200" lcn="634" s_name="NDR Info Spezial" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10421" ts_id="1039" freq="11053" prog_idx="1218773201" lcn="635" s_name="NDR Blue" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="21104" ts_id="1053" freq="10773" prog_idx="1083506898" lcn="456" s_name="HSE HD" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10422" ts_id="1039" freq="11053" prog_idx="1218773203" lcn="636" s_name="NDR Schlager" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10426" ts_id="1039" freq="11053" prog_idx="1218773204" lcn="637" s_name="Bremen Eins" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="21107" ts_id="1053" freq="10773" prog_idx="1083506901" lcn="457" s_name="ShopLC HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="21108" ts_id="1053" freq="10773" prog_idx="1083506902" lcn="458" s_name="WELT HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="21118" ts_id="1053" freq="10773" prog_idx="1083506903" lcn="459" s_name="WELT HD Austria" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30350" ts_id="1054" freq="10788" prog_idx="1083572440" lcn="460" s_name="M+Baloncesto" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30353" ts_id="1054" freq="10788" prog_idx="1083572441" lcn="461" s_name="DAZN Mundial2" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30354" ts_id="1054" freq="10788" prog_idx="1083572442" lcn="462" s_name="MULTIDEPORTE" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30357" ts_id="1054" freq="10788" prog_idx="1083572443" lcn="463" s_name="DAZNBaloncesto3" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30358" ts_id="1054" freq="10788" prog_idx="1083572444" lcn="464" s_name="M+ ORGULLO" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30359" ts_id="1054" freq="10788" prog_idx="1083572445" lcn="465" s_name="NICK JR" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30361" ts_id="1054" freq="10788" prog_idx="1083572446" lcn="466" s_name="MEZZO" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30362" ts_id="1054" freq="10788" prog_idx="1083572447" lcn="467" s_name="LALIGA TV BAR 3" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30363" ts_id="1054" freq="10788" prog_idx="1083572448" lcn="468" s_name="M+DEPORTES6" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30365" ts_id="1054" freq="10788" prog_idx="1083572449" lcn="469" s_name="M+ FANZONE" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30366" ts_id="1054" freq="10788" prog_idx="1083572450" lcn="470" s_name="LA SEXTA" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30367" ts_id="1054" freq="10788" prog_idx="1083572451" lcn="471" s_name="M+LCAMPEON3" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30371" ts_id="1054" freq="10788" prog_idx="1083572452" lcn="472" s_name="MULTIDEPORTE" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30372" ts_id="1054" freq="10788" prog_idx="1083572453" lcn="473" s_name="DAZN 1" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30373" ts_id="1054" freq="10788" prog_idx="1083572454" lcn="474" s_name="EUROSPORT 2" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30375" ts_id="1054" freq="10788" prog_idx="1083572455" lcn="475" s_name="TEST F1" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="5500" ts_id="1055" freq="10803" prog_idx="1083637992" lcn="476" s_name="Disney Channel HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="5501" ts_id="1055" freq="10803" prog_idx="1083637993" lcn="477" s_name="HSE Extra HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="5502" ts_id="1055" freq="10803" prog_idx="1083637994" lcn="478" s_name="1-2-3.tv HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="5503" ts_id="1055" freq="10803" prog_idx="1083637995" lcn="479" s_name="Deluxe Music HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="5504" ts_id="1055" freq="10803" prog_idx="1083637996" lcn="480" s_name="QVC ZWEI HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="5505" ts_id="1055" freq="10803" prog_idx="1083637997" lcn="481" s_name="SPORT1 HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="5510" ts_id="1055" freq="10803" prog_idx="1083637998" lcn="482" s_name="Disney Channel HD Aust" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="5513" ts_id="1055" freq="10803" prog_idx="1083637999" lcn="483" s_name="Deluxe Music HD Austri" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="29951" ts_id="1056" freq="10818" prog_idx="1083703536" lcn="484" s_name="BarTV Mundial HD" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="29956" ts_id="1056" freq="10818" prog_idx="1083703537" lcn="485" s_name="1ª FEDERACION HD" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="29960" ts_id="1056" freq="10818" prog_idx="1083703538" lcn="486" s_name="M+ VAMOSHD" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="29961" ts_id="1056" freq="10818" prog_idx="1083703539" lcn="487" s_name="M+ ACCIÓN HD" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="29962" ts_id="1056" freq="10818" prog_idx="1083703540" lcn="488" s_name="M+ VAMOSHD" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="29963" ts_id="1056" freq="10818" prog_idx="1083703541" lcn="489" s_name="M+ DRAMA HD" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="29964" ts_id="1056" freq="10818" prog_idx="1083703542" lcn="490" s_name="M+ Originales HD" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="29965" ts_id="1056" freq="10818" prog_idx="1083703543" lcn="491" s_name="M+ FANZONE HD" fta="0" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10427" ts_id="1039" freq="11053" prog_idx="1218773240" lcn="638" s_name="Bremen Zwei" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10428" ts_id="1039" freq="11053" prog_idx="1218773241" lcn="639" s_name="Bremen Vier" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10429" ts_id="1039" freq="11053" prog_idx="1218773242" lcn="640" s_name="Bremen NEXT" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="29967" ts_id="1056" freq="10818" prog_idx="1083703547" lcn="492" s_name="M+ LALIGA HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="61200" ts_id="1057" freq="10832" prog_idx="1083769084" lcn="493" s_name="RTL HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="61201" ts_id="1057" freq="10832" prog_idx="1083769085" lcn="494" s_name="VOX HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="61204" ts_id="1057" freq="10832" prog_idx="1083769086" lcn="495" s_name="ntv HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="61205" ts_id="1057" freq="10832" prog_idx="1083769087" lcn="496" s_name="RTLZWEI HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="61206" ts_id="1057" freq="10832" prog_idx="1083769088" lcn="497" s_name="RTLup HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="61207" ts_id="1057" freq="10832" prog_idx="1083769089" lcn="498" s_name="VOXup HD" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30102" ts_id="1058" freq="10847" prog_idx="1083834626" lcn="499" s_name="TEST RA" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="30105" ts_id="1058" freq="10847" prog_idx="1083834627" lcn="501" s_name="TEST M Baloncesto 3" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="30108" ts_id="1058" freq="10847" prog_idx="1083834628" lcn="502" s_name="PORTADA" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="30110" ts_id="1058" freq="10847" prog_idx="1083834629" lcn="503" s_name="BAJO DEMANDA" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="30121" ts_id="1058" freq="10847" prog_idx="1083834630" lcn="504" s_name="GUÍA" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="30128" ts_id="1058" freq="10847" prog_idx="1083834631" lcn="505" s_name="Antig. ALQUILER G1" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="30130" ts_id="1058" freq="10847" prog_idx="1083834632" lcn="506" s_name="TEST TP58" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="30150" ts_id="1058" freq="10847" prog_idx="1083834633" lcn="507" s_name="PORTADA" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="30169" ts_id="1058" freq="10847" prog_idx="1083834634" lcn="508" s_name="CONTRATO" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="30174" ts_id="1058" freq="10847" prog_idx="1083834635" lcn="509" s_name="TEST_CSD1" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="30175" ts_id="1058" freq="10847" prog_idx="1083834636" lcn="510" s_name="TEST_CSD2" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10432" ts_id="1039" freq="11053" prog_idx="1218773261" lcn="641" s_name="SR 1 Europawelle" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="30176" ts_id="1058" freq="10847" prog_idx="1083834638" lcn="511" s_name="TEST_CSD3" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="30177" ts_id="1058" freq="10847" prog_idx="1083834639" lcn="512" s_name="TEST_CSD4" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="30178" ts_id="1058" freq="10847" prog_idx="1083834640" lcn="513" s_name="TEST_CSD5" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="30179" ts_id="1058" freq="10847" prog_idx="1083834641" lcn="514" s_name="TJ" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="30198" ts_id="1058" freq="10847" prog_idx="1083834642" lcn="515" s_name="GUÍA FÁCIL" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="30601" ts_id="1060" freq="10876" prog_idx="1083965715" lcn="516" s_name="M+ GOLF" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30602" ts_id="1060" freq="10876" prog_idx="1083965716" lcn="517" s_name="BabyTV" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30603" ts_id="1060" freq="10876" prog_idx="1083965717" lcn="518" s_name="PLAYBOY TV" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30604" ts_id="1060" freq="10876" prog_idx="1083965718" lcn="519" s_name="TELECINCO" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30605" ts_id="1060" freq="10876" prog_idx="1083965719" lcn="520" s_name="NAT GEOGRAPH" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30606" ts_id="1060" freq="10876" prog_idx="1083965720" lcn="521" s_name="M+ VAMOS BAR" fta="0" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10433" ts_id="1039" freq="11053" prog_idx="1218773273" lcn="642" s_name="SR kultur" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10434" ts_id="1039" freq="11053" prog_idx="1218773274" lcn="643" s_name="SR 3 Saarlandwelle" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10440" ts_id="1039" freq="11053" prog_idx="1218773275" lcn="644" s_name="SWR1 BW" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10441" ts_id="1039" freq="11053" prog_idx="1218773276" lcn="645" s_name="SWR1 RLP" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10442" ts_id="1039" freq="11053" prog_idx="1218773277" lcn="646" s_name="SWR Kultur" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10443" ts_id="1039" freq="11053" prog_idx="1218773278" lcn="647" s_name="SWR3" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10444" ts_id="1039" freq="11053" prog_idx="1218773279" lcn="648" s_name="SWR4 S" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10445" ts_id="1039" freq="11053" prog_idx="1218773280" lcn="649" s_name="SWR4 MZ" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10446" ts_id="1039" freq="11053" prog_idx="1218773281" lcn="650" s_name="DASDING vom SWR" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10447" ts_id="1039" freq="11053" prog_idx="1218773282" lcn="651" s_name="SWR Aktuell" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10448" ts_id="1039" freq="11053" prog_idx="1218773283" lcn="652" s_name="SWR 5.1 Kultur" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10451" ts_id="1039" freq="11053" prog_idx="1218773284" lcn="653" s_name="1LIVE" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10452" ts_id="1039" freq="11053" prog_idx="1218773285" lcn="654" s_name="WDR 2" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10453" ts_id="1039" freq="11053" prog_idx="1218773286" lcn="655" s_name="WDR 3" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10454" ts_id="1039" freq="11053" prog_idx="1218773287" lcn="656" s_name="WDR 4" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10455" ts_id="1039" freq="11053" prog_idx="1218773288" lcn="657" s_name="WDR 5" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10456" ts_id="1039" freq="11053" prog_idx="1218773289" lcn="658" s_name="COSMO" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10457" ts_id="1039" freq="11053" prog_idx="1218773290" lcn="659" s_name="1LIVE diGGi" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10458" ts_id="1039" freq="11053" prog_idx="1218773291" lcn="660" s_name="Die Maus" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="10459" ts_id="1039" freq="11053" prog_idx="1218773292" lcn="661" s_name="WDR Event" fta="1" />
+<ch type="RADIO" pol="V" sym="22000" s_id="4241" ts_id="1006" freq="11288" prog_idx="1219690797" lcn="761" s_name="Radio Maryja" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="4920" ts_id="1007" freq="11303" prog_idx="1219756334" lcn="772" s_name="ORF HITRADIO OE3" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="4940" ts_id="1007" freq="11303" prog_idx="1219756335" lcn="774" s_name="ORF OE1" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="4941" ts_id="1007" freq="11303" prog_idx="1219756336" lcn="775" s_name="ORF FM4" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="4942" ts_id="1007" freq="11303" prog_idx="1219756337" lcn="776" s_name="ORF WIEN" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="4943" ts_id="1007" freq="11303" prog_idx="1219756338" lcn="777" s_name="ORF NOE" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="4944" ts_id="1007" freq="11303" prog_idx="1219756339" lcn="778" s_name="ORF B" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="4945" ts_id="1007" freq="11303" prog_idx="1219756340" lcn="779" s_name="ORF OOE" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="4946" ts_id="1007" freq="11303" prog_idx="1219756341" lcn="780" s_name="ORF S" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="4947" ts_id="1007" freq="11303" prog_idx="1219756342" lcn="781" s_name="ORF T" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="4948" ts_id="1007" freq="11303" prog_idx="1219756343" lcn="782" s_name="ORF V" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="4949" ts_id="1007" freq="11303" prog_idx="1219756344" lcn="783" s_name="ORF STMK" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="30607" ts_id="1060" freq="10876" prog_idx="1083965753" lcn="522" s_name="M+ DEPORTES" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30608" ts_id="1060" freq="10876" prog_idx="1083965754" lcn="523" s_name="CALLE 13" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30610" ts_id="1060" freq="10876" prog_idx="1083965755" lcn="524" s_name="CUATRO" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30611" ts_id="1060" freq="10876" prog_idx="1083965756" lcn="525" s_name="BarTV Mundial" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30613" ts_id="1060" freq="10876" prog_idx="1083965757" lcn="526" s_name="BBC TOP GEAR" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30614" ts_id="1060" freq="10876" prog_idx="1083965758" lcn="527" s_name="SYFY" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30615" ts_id="1060" freq="10876" prog_idx="1083965759" lcn="528" s_name="M+ LALIGA " fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30616" ts_id="1060" freq="10876" prog_idx="1083965760" lcn="529" s_name="TEST TXP60" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="10350" ts_id="1061" freq="10891" prog_idx="1084031297" lcn="530" s_name="rbb Brandenburg HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="10353" ts_id="1061" freq="10891" prog_idx="1084031298" lcn="531" s_name="MDR S-Anhalt HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="10354" ts_id="1061" freq="10891" prog_idx="1084031299" lcn="532" s_name="MDR Thüringen HD" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="30001" ts_id="1062" freq="10906" prog_idx="1084096836" lcn="553" s_name="DAZN F1 HD" fta="0" />
+<ch type="RADIO" pol="H" sym="22000" s_id="4950" ts_id="1007" freq="11303" prog_idx="1219756357" lcn="784" s_name="ORF K" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="4951" ts_id="1007" freq="11303" prog_idx="1219756358" lcn="785" s_name="ORF RADIO OE1 DOLBY" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="11190" ts_id="1011" freq="11362" prog_idx="1219952967" lcn="801" s_name="Dlf Kultur" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="30002" ts_id="1062" freq="10906" prog_idx="1084096840" lcn="554" s_name="M+DEPORTES2HD" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30003" ts_id="1062" freq="10906" prog_idx="1084096841" lcn="555" s_name="M+ Indie HD" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30004" ts_id="1062" freq="10906" prog_idx="1084096842" lcn="556" s_name="DAZN MundialHD" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30005" ts_id="1062" freq="10906" prog_idx="1084096843" lcn="557" s_name="EUROSPORT1HD" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30006" ts_id="1062" freq="10906" prog_idx="1084096844" lcn="558" s_name="M+BaloncestoHD" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30007" ts_id="1062" freq="10906" prog_idx="1084096845" lcn="559" s_name="M+COMEDIA HD" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30009" ts_id="1062" freq="10906" prog_idx="1084096846" lcn="560" s_name="M+ ESTRENOS HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="35" ts_id="15" freq="10921" prog_idx="1084162383" lcn="561" s_name="Schlager Deluxe" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="38" ts_id="15" freq="10921" prog_idx="1084162384" lcn="562" s_name="HGTV" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="30752" ts_id="1064" freq="10936" prog_idx="1084227921" lcn="563" s_name="TEST 6 TXP64" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30753" ts_id="1064" freq="10936" prog_idx="1084227922" lcn="564" s_name="TEST 1 TXP64" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30754" ts_id="1064" freq="10936" prog_idx="1084227923" lcn="565" s_name="TEST 2 TXP64" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30756" ts_id="1064" freq="10936" prog_idx="1084227924" lcn="566" s_name="TEST 3 TXP64" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30757" ts_id="1064" freq="10936" prog_idx="1084227925" lcn="567" s_name="LALIGA TV HYPERMOTION" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30759" ts_id="1064" freq="10936" prog_idx="1084227926" lcn="568" s_name="DAZNBaloncesto" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30761" ts_id="1064" freq="10936" prog_idx="1084227927" lcn="569" s_name="TEST TXP64" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30762" ts_id="1064" freq="10936" prog_idx="1084227928" lcn="570" s_name="LALIGA TV HYPERMOTION 3" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30763" ts_id="1064" freq="10936" prog_idx="1084227929" lcn="571" s_name="TEST 7 TXP64" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30764" ts_id="1064" freq="10936" prog_idx="1084227930" lcn="572" s_name="TEST 4 TXP64" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30765" ts_id="1064" freq="10936" prog_idx="1084227931" lcn="573" s_name="M+DEPORTES7" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30767" ts_id="1064" freq="10936" prog_idx="1084227932" lcn="574" s_name="TEST 5 TXP64" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30768" ts_id="1064" freq="10936" prog_idx="1084227933" lcn="575" s_name="LALIGA TV BAR 4" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30769" ts_id="1064" freq="10936" prog_idx="1084227934" lcn="576" s_name="LALIGA TV HYPERMOTION 2" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="10100" ts_id="1033" freq="10964" prog_idx="1084293471" lcn="577" s_name="TLC HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="10101" ts_id="1033" freq="10964" prog_idx="1084293472" lcn="578" s_name="." fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="10102" ts_id="1033" freq="10964" prog_idx="1084293473" lcn="579" s_name="Handystar TV HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="10104" ts_id="1033" freq="10964" prog_idx="1084293474" lcn="580" s_name="HSE Trend HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="10105" ts_id="1033" freq="10964" prog_idx="1084293475" lcn="581" s_name="QVC STYLE HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="10110" ts_id="1033" freq="10964" prog_idx="1084293476" lcn="582" s_name="TLC HD Austria" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30652" ts_id="1034" freq="10979" prog_idx="1084359013" lcn="583" s_name="FDF" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30653" ts_id="1034" freq="10979" prog_idx="1084359014" lcn="584" s_name="M+ LALIGA 3" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30654" ts_id="1034" freq="10979" prog_idx="1084359015" lcn="585" s_name="DAZN 3" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30655" ts_id="1034" freq="10979" prog_idx="1084359016" lcn="586" s_name="M+DEPORTES4" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30656" ts_id="1034" freq="10979" prog_idx="1084359017" lcn="587" s_name="DAZN 4" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30657" ts_id="1034" freq="10979" prog_idx="1084359018" lcn="588" s_name="BBC SERIES" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30658" ts_id="1034" freq="10979" prog_idx="1084359019" lcn="589" s_name="M+DEPORTES3" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30659" ts_id="1034" freq="10979" prog_idx="1084359020" lcn="590" s_name="M+LCAMPEON2" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30660" ts_id="1034" freq="10979" prog_idx="1084359021" lcn="591" s_name="M+LCAMPEON5" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30662" ts_id="1034" freq="10979" prog_idx="1084359022" lcn="592" s_name="M+ CLÁSICOS" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30663" ts_id="1034" freq="10979" prog_idx="1084359023" lcn="593" s_name="DreamWorks" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30664" ts_id="1034" freq="10979" prog_idx="1084359024" lcn="594" s_name="M+DEPORTES5" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30665" ts_id="1034" freq="10979" prog_idx="1084359025" lcn="595" s_name="M+DEPORTES8" fta="0" />
+<ch type="RADIO" pol="H" sym="22000" s_id="11191" ts_id="1011" freq="11362" prog_idx="1219953010" lcn="802" s_name="Dlf" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="30680" ts_id="1034" freq="10979" prog_idx="1084359027" lcn="596" s_name="M+LCAMPEON4" fta="0" />
+<ch type="RADIO" pol="H" sym="22000" s_id="11192" ts_id="1011" freq="11362" prog_idx="1219953012" lcn="803" s_name="Dlf Nova" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="1" ts_id="1035" freq="10994" prog_idx="1084424565" lcn="597" s_name="SES UHD Demo Channel" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="2" ts_id="1035" freq="10994" prog_idx="1084424566" lcn="598" s_name="UHD1 by ASTRA / HD+" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="7" ts_id="1035" freq="10994" prog_idx="1084424567" lcn="599" s_name="SES UHD Demo Channel 06" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="6205" ts_id="1035" freq="10994" prog_idx="1084424568" lcn="600" s_name="Pro7Sat.1 UHD" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30400" ts_id="1038" freq="11038" prog_idx="1084490105" lcn="601" s_name="M+ ESTRENOS" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30401" ts_id="1038" freq="11038" prog_idx="1084490106" lcn="602" s_name="CLAN  TVE" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30402" ts_id="1038" freq="11038" prog_idx="1084490107" lcn="603" s_name="LA 1" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30403" ts_id="1038" freq="11038" prog_idx="1084490108" lcn="604" s_name="BBC LIFESTYLE" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30404" ts_id="1038" freq="11038" prog_idx="1084490109" lcn="605" s_name="BBC EARTH" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30405" ts_id="1038" freq="11038" prog_idx="1084490110" lcn="606" s_name="BarTV Mundial2" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30407" ts_id="1038" freq="11038" prog_idx="1084490111" lcn="607" s_name="TCM" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30408" ts_id="1038" freq="11038" prog_idx="1084490112" lcn="608" s_name="COMEDY CENTRAL" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30409" ts_id="1038" freq="11038" prog_idx="1084490113" lcn="609" s_name="DAZN Mundial" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30410" ts_id="1038" freq="11038" prog_idx="1084490114" lcn="610" s_name="M+ HITS" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30411" ts_id="1038" freq="11038" prog_idx="1084490115" lcn="611" s_name="WARNERTV" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30412" ts_id="1038" freq="11038" prog_idx="1084490116" lcn="612" s_name="TELEDEPORTE" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30414" ts_id="1038" freq="11038" prog_idx="1084490117" lcn="613" s_name="BBC FOOD" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30415" ts_id="1038" freq="11038" prog_idx="1084490118" lcn="614" s_name="M+ Indie" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="10378" ts_id="1039" freq="11053" prog_idx="1084555655" lcn="615" s_name="SR Fernsehen HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="10379" ts_id="1039" freq="11053" prog_idx="1084555656" lcn="616" s_name="Radio Bremen HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="10390" ts_id="1039" freq="11053" prog_idx="1084555657" lcn="617" s_name="ARD-Test-R" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="10391" ts_id="1039" freq="11053" prog_idx="1084555658" lcn="618" s_name="ARD-Test-1" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="31304" ts_id="1040" freq="11068" prog_idx="1084621195" lcn="662" s_name="Die Neue Zeit TV" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="31305" ts_id="1040" freq="11068" prog_idx="1084621196" lcn="663" s_name="Telesur HD" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="31306" ts_id="1040" freq="11068" prog_idx="1084621197" lcn="664" s_name="SENDER NEU JERUSALEM" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="31308" ts_id="1040" freq="11068" prog_idx="1084621198" lcn="665" s_name="SACHSEN EINS" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="31309" ts_id="1040" freq="11068" prog_idx="1084621199" lcn="666" s_name="Anewz" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="11911" ts_id="1041" freq="11082" prog_idx="1084686736" lcn="667" s_name="RTL HD Austria" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="11921" ts_id="1041" freq="11082" prog_idx="1084686737" lcn="668" s_name="VOX HD Austria" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="11931" ts_id="1041" freq="11082" prog_idx="1084686738" lcn="669" s_name="SUPER RTL HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="11941" ts_id="1041" freq="11082" prog_idx="1084686739" lcn="670" s_name="RTLZWEI HD Austria" fta="0" />
+<ch type="RADIO" pol="H" sym="22000" s_id="11193" ts_id="1011" freq="11362" prog_idx="1219953044" lcn="804" s_name="DRadio Dok&amp;Deb" fta="1" />
+<ch type="RADIO" pol="H" sym="27500" s_id="160" ts_id="7" freq="12148" prog_idx="1222246805" lcn="993" s_name="ROCK ANTENNE" fta="1" />
+<ch type="RADIO" pol="H" sym="27500" s_id="169" ts_id="7" freq="12148" prog_idx="1222246806" lcn="994" s_name="sunshine live" fta="1" />
+<ch type="RADIO" pol="H" sym="27500" s_id="170" ts_id="7" freq="12148" prog_idx="1222246807" lcn="995" s_name="ANTENNE BAYERN" fta="1" />
+<ch type="RADIO" pol="H" sym="27500" s_id="180" ts_id="7" freq="12148" prog_idx="1222246808" lcn="996" s_name="OLDIE ANTENNE" fta="1" />
+<ch type="RADIO" pol="H" sym="27500" s_id="12091" ts_id="1089" freq="12188" prog_idx="1222377881" lcn="1025" s_name="TOGGO Radio" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9109" ts_id="1094" freq="12285" prog_idx="1222574490" lcn="1041" s_name="SUD RADIO" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9142" ts_id="1094" freq="12285" prog_idx="1222574491" lcn="1042" s_name="BBCW SERVICE" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9144" ts_id="1094" freq="12285" prog_idx="1222574492" lcn="1043" s_name="RADIO MELODY" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9153" ts_id="1094" freq="12285" prog_idx="1222574493" lcn="1044" s_name="MOUV" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="11951" ts_id="1041" freq="11082" prog_idx="1084686750" lcn="671" s_name="NITRO HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="11961" ts_id="1041" freq="11082" prog_idx="1084686751" lcn="672" s_name="ntv Austria" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="30056" ts_id="1042" freq="11097" prog_idx="1084752288" lcn="673" s_name="DAZNBaloncesto2" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30057" ts_id="1042" freq="11097" prog_idx="1084752289" lcn="674" s_name="DAZN MOTO GP" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30059" ts_id="1042" freq="11097" prog_idx="1084752290" lcn="675" s_name="M+Baloncesto2" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30060" ts_id="1042" freq="11097" prog_idx="1084752291" lcn="676" s_name="M+VAMOSBAR2" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30061" ts_id="1042" freq="11097" prog_idx="1084752292" lcn="677" s_name="M+ GOLF 2" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30068" ts_id="1042" freq="11097" prog_idx="1084752293" lcn="678" s_name="DAZN 1 BAR" fta="0" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9154" ts_id="1094" freq="12285" prog_idx="1222574502" lcn="1045" s_name="FRANCE MUSIQUE" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9155" ts_id="1094" freq="12285" prog_idx="1222574503" lcn="1046" s_name="FIP" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9156" ts_id="1094" freq="12285" prog_idx="1222574504" lcn="1047" s_name="FRANCE INFO" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9157" ts_id="1094" freq="12285" prog_idx="1222574505" lcn="1048" s_name="FRANCE INTER" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9158" ts_id="1094" freq="12285" prog_idx="1222574506" lcn="1049" s_name="FRANCE CULTURE" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9159" ts_id="1094" freq="12285" prog_idx="1222574507" lcn="1050" s_name="FRANCE BLEU" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9163" ts_id="1094" freq="12285" prog_idx="1222574508" lcn="1051" s_name="RFI INTERNATIONAL" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9164" ts_id="1094" freq="12285" prog_idx="1222574509" lcn="1052" s_name="RADIO CLASSIQUE" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9166" ts_id="1094" freq="12285" prog_idx="1222574510" lcn="1053" s_name="EUROPE 1" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9168" ts_id="1094" freq="12285" prog_idx="1222574511" lcn="1054" s_name="RIRE ET CHANSONS" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9175" ts_id="1094" freq="12285" prog_idx="1222574512" lcn="1055" s_name="TSF JAZZ" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9177" ts_id="1094" freq="12285" prog_idx="1222574513" lcn="1056" s_name="JAZZ RADIO" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9178" ts_id="1094" freq="12285" prog_idx="1222574514" lcn="1057" s_name="NOVA" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9179" ts_id="1094" freq="12285" prog_idx="1222574515" lcn="1058" s_name="RADIO FG" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="30071" ts_id="1042" freq="11097" prog_idx="1084752308" lcn="679" s_name="CLASSICA" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30073" ts_id="1042" freq="11097" prog_idx="1084752309" lcn="680" s_name="M+ VAMOS 2" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30075" ts_id="1042" freq="11097" prog_idx="1084752310" lcn="681" s_name="M+LCAMPEONES" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30079" ts_id="1042" freq="11097" prog_idx="1084752311" lcn="682" s_name="AXN MOVIES" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30082" ts_id="1042" freq="11097" prog_idx="1084752312" lcn="683" s_name="DAZN 2 BAR" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30084" ts_id="1042" freq="11097" prog_idx="1084752313" lcn="684" s_name="1ª FEDERACION" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30087" ts_id="1042" freq="11097" prog_idx="1084752314" lcn="685" s_name="NEOX" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30088" ts_id="1042" freq="11097" prog_idx="1084752315" lcn="686" s_name="Movistar Plus" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="12502" ts_id="1043" freq="11112" prog_idx="1084817852" lcn="687" s_name="Eurosport 1 HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="12504" ts_id="1043" freq="11112" prog_idx="1084817853" lcn="688" s_name="DFB.TV" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="12522" ts_id="1043" freq="11112" prog_idx="1084817854" lcn="689" s_name="Eurosport 1 HD Austria" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="12530" ts_id="1043" freq="11112" prog_idx="1084817855" lcn="690" s_name="K-TV HD" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="30850" ts_id="1044" freq="11127" prog_idx="1084883392" lcn="691" s_name="TEST 4 TXP 44" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30852" ts_id="1044" freq="11127" prog_idx="1084883393" lcn="692" s_name="DAZN Mundial4" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30853" ts_id="1044" freq="11127" prog_idx="1084883394" lcn="693" s_name="M+VACACIONES" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30856" ts_id="1044" freq="11127" prog_idx="1084883395" lcn="694" s_name="BOING" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30857" ts_id="1044" freq="11127" prog_idx="1084883396" lcn="695" s_name="ENERGY" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30859" ts_id="1044" freq="11127" prog_idx="1084883397" lcn="696" s_name="DIVINITY" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30860" ts_id="1044" freq="11127" prog_idx="1084883398" lcn="697" s_name="TEST 2 TXP 44" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30861" ts_id="1044" freq="11127" prog_idx="1084883399" lcn="698" s_name="TEST 1 TXP 44" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30863" ts_id="1044" freq="11127" prog_idx="1084883400" lcn="699" s_name="MTV ESPAÑA" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30864" ts_id="1044" freq="11127" prog_idx="1084883401" lcn="700" s_name="GOL" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30865" ts_id="1044" freq="11127" prog_idx="1084883402" lcn="701" s_name="BE MAD" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30866" ts_id="1044" freq="11127" prog_idx="1084883403" lcn="702" s_name="TEST 3 TXP 44" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30867" ts_id="1044" freq="11127" prog_idx="1084883404" lcn="703" s_name="M+Baloncesto3" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30868" ts_id="1044" freq="11127" prog_idx="1084883405" lcn="704" s_name="DAZN Mundial 3" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30505" ts_id="1046" freq="11156" prog_idx="1084948942" lcn="705" s_name="CANAL SUR A." fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="30506" ts_id="1046" freq="11156" prog_idx="1084948943" lcn="706" s_name="DAZN 2" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30507" ts_id="1046" freq="11156" prog_idx="1084948944" lcn="707" s_name="CAZA Y PESCA" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30508" ts_id="1046" freq="11156" prog_idx="1084948945" lcn="708" s_name="ANTENA 3" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30509" ts_id="1046" freq="11156" prog_idx="1084948946" lcn="709" s_name="EUROSPORT 1" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30510" ts_id="1046" freq="11156" prog_idx="1084948947" lcn="710" s_name="NICKELODEON" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30511" ts_id="1046" freq="11156" prog_idx="1084948948" lcn="711" s_name="DISCOVERY" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30512" ts_id="1046" freq="11156" prog_idx="1084948949" lcn="712" s_name="COSMO" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30513" ts_id="1046" freq="11156" prog_idx="1084948950" lcn="713" s_name="BBC HISTORY" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30514" ts_id="1046" freq="11156" prog_idx="1084948951" lcn="714" s_name="DAZN F1" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30515" ts_id="1046" freq="11156" prog_idx="1084948952" lcn="715" s_name="M+ VAMOS" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30516" ts_id="1046" freq="11156" prog_idx="1084948953" lcn="716" s_name="M+ VAMOS" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30518" ts_id="1046" freq="11156" prog_idx="1084948954" lcn="717" s_name="M+Cine Español" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30520" ts_id="1046" freq="11156" prog_idx="1084948955" lcn="718" s_name="24 HORAS" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30521" ts_id="1046" freq="11156" prog_idx="1084948956" lcn="719" s_name="M+DEPORTES2" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="4300" ts_id="1048" freq="11186" prog_idx="1085080029" lcn="720" s_name="SPORTDIGITAL FUSSBALL " fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="4301" ts_id="1048" freq="11186" prog_idx="1085080030" lcn="721" s_name="Sportdigital1+" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="4302" ts_id="1048" freq="11186" prog_idx="1085080031" lcn="722" s_name="eSportsOne" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="4303" ts_id="1048" freq="11186" prog_idx="1085080032" lcn="723" s_name="sportdigital EDGE" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="4304" ts_id="1048" freq="11186" prog_idx="1085080033" lcn="724" s_name="WAIDWERK" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="4305" ts_id="1048" freq="11186" prog_idx="1085080034" lcn="725" s_name="ClipMyHorse.TV" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="5021" ts_id="1002" freq="11229" prog_idx="1085211107" lcn="726" s_name="NHK WORLD-JPN" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="5031" ts_id="1002" freq="11229" prog_idx="1085211108" lcn="727" s_name="Al Jazeera English HD" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="5050" ts_id="1002" freq="11229" prog_idx="1085211109" lcn="728" s_name="Aragon TV" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="5051" ts_id="1002" freq="11229" prog_idx="1085211110" lcn="729" s_name="IB3" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="5052" ts_id="1002" freq="11229" prog_idx="1085211111" lcn="730" s_name="La 7 Castillaleon" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="5053" ts_id="1002" freq="11229" prog_idx="1085211112" lcn="731" s_name="Extremadura TV" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="5054" ts_id="1002" freq="11229" prog_idx="1085211113" lcn="732" s_name="TVG1" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="13222" ts_id="1003" freq="11244" prog_idx="1085276650" lcn="733" s_name="LILO.TV" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13223" ts_id="1003" freq="11244" prog_idx="1085276651" lcn="734" s_name="ATV2 HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="13224" ts_id="1003" freq="11244" prog_idx="1085276652" lcn="735" s_name="Bibel TV HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13227" ts_id="1003" freq="11244" prog_idx="1085276653" lcn="736" s_name="Hope TV" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13228" ts_id="1003" freq="11244" prog_idx="1085276654" lcn="737" s_name="ATV HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="13231" ts_id="1003" freq="11244" prog_idx="1085276655" lcn="738" s_name="Test42" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13232" ts_id="1003" freq="11244" prog_idx="1085276656" lcn="739" s_name="Test43" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="30900" ts_id="1004" freq="11259" prog_idx="1085342193" lcn="740" s_name="M+LCAMPEONES" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30901" ts_id="1004" freq="11259" prog_idx="1085342194" lcn="741" s_name="M+ VAMOS 3 HD" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30902" ts_id="1004" freq="11259" prog_idx="1085342195" lcn="742" s_name="M+ HITS HD" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30903" ts_id="1004" freq="11259" prog_idx="1085342196" lcn="743" s_name="M+ GOLF HD" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30904" ts_id="1004" freq="11259" prog_idx="1085342197" lcn="744" s_name="CAZAyPESCA HD" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30910" ts_id="1004" freq="11259" prog_idx="1085342198" lcn="745" s_name="M+Documentales HD" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30911" ts_id="1004" freq="11259" prog_idx="1085342199" lcn="746" s_name="M+ CLÁSICOS HD" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="30912" ts_id="1004" freq="11259" prog_idx="1085342200" lcn="747" s_name="M+DEPORTESHD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="13301" ts_id="1005" freq="11273" prog_idx="1085407737" lcn="748" s_name="ORF2St HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="13302" ts_id="1005" freq="11273" prog_idx="1085407738" lcn="749" s_name="ORF2K HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="13303" ts_id="1005" freq="11273" prog_idx="1085407739" lcn="750" s_name="ORF2B HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="13304" ts_id="1005" freq="11273" prog_idx="1085407740" lcn="751" s_name="ORF2O HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="13305" ts_id="1005" freq="11273" prog_idx="1085407741" lcn="752" s_name="ORF2S HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="13306" ts_id="1005" freq="11273" prog_idx="1085407742" lcn="753" s_name="ORF2T HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="13307" ts_id="1005" freq="11273" prog_idx="1085407743" lcn="754" s_name="ORF2V HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="13308" ts_id="1005" freq="11273" prog_idx="1085407744" lcn="755" s_name="ORF III HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="13309" ts_id="1005" freq="11273" prog_idx="1085407745" lcn="756" s_name="ORF SPORT+ HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="13310" ts_id="1005" freq="11273" prog_idx="1085407746" lcn="757" s_name="ORF 2 EUROPE HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13315" ts_id="1005" freq="11273" prog_idx="1085407747" lcn="758" s_name="TV1 OOE NEU" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13316" ts_id="1005" freq="11273" prog_idx="1085407748" lcn="759" s_name="Stimmungsgarten TV" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="4240" ts_id="1006" freq="11288" prog_idx="1085473285" lcn="760" s_name="TV Trwam" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="4250" ts_id="1006" freq="11288" prog_idx="1085473286" lcn="762" s_name="La 7 HD" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="4251" ts_id="1006" freq="11288" prog_idx="1085473287" lcn="763" s_name="TV-3 Cataluna HD" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="4252" ts_id="1006" freq="11288" prog_idx="1085473288" lcn="764" s_name="Telemadrid" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="4253" ts_id="1006" freq="11288" prog_idx="1085473289" lcn="765" s_name="Television Canaria" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="4254" ts_id="1006" freq="11288" prog_idx="1085473290" lcn="766" s_name="CMM" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="4911" ts_id="1007" freq="11303" prog_idx="1085538827" lcn="767" s_name="ORF1 HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="4912" ts_id="1007" freq="11303" prog_idx="1085538828" lcn="768" s_name="ORF2W HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="4913" ts_id="1007" freq="11303" prog_idx="1085538829" lcn="769" s_name="ServusTV HD Oesterreich" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="4916" ts_id="1007" freq="11303" prog_idx="1085538830" lcn="770" s_name="ORF2N HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="4917" ts_id="1007" freq="11303" prog_idx="1085538831" lcn="771" s_name="ORF HITRADIO OE3 VISUAL" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="4930" ts_id="1007" freq="11303" prog_idx="1085538832" lcn="773" s_name="RiC NEU" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="29800" ts_id="1008" freq="11318" prog_idx="1085604369" lcn="786" s_name="M+ VAMOS 3" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="29801" ts_id="1008" freq="11318" prog_idx="1085604370" lcn="787" s_name="NOVA" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="29802" ts_id="1008" freq="11318" prog_idx="1085604371" lcn="788" s_name="IBERALIA TV" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="29803" ts_id="1008" freq="11318" prog_idx="1085604372" lcn="789" s_name="Disney Channel" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="29804" ts_id="1008" freq="11318" prog_idx="1085604373" lcn="790" s_name="M+ ACCIÓN" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="29805" ts_id="1008" freq="11318" prog_idx="1085604374" lcn="791" s_name="M+ COMEDIA" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="29806" ts_id="1008" freq="11318" prog_idx="1085604375" lcn="792" s_name="M+ DRAMA" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="29807" ts_id="1008" freq="11318" prog_idx="1085604376" lcn="793" s_name="STAR Channel" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="29809" ts_id="1008" freq="11318" prog_idx="1085604377" lcn="794" s_name="M+ Documentales" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="29810" ts_id="1008" freq="11318" prog_idx="1085604378" lcn="795" s_name="NAT GEO WILD" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="29811" ts_id="1008" freq="11318" prog_idx="1085604379" lcn="796" s_name="ARAGON TV INT" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="29812" ts_id="1008" freq="11318" prog_idx="1085604380" lcn="797" s_name="LA 2" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="29815" ts_id="1008" freq="11318" prog_idx="1085604381" lcn="798" s_name="AXN" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="29816" ts_id="1008" freq="11318" prog_idx="1085604382" lcn="799" s_name="M+ Originales" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="11160" ts_id="1010" freq="11347" prog_idx="1085669919" lcn="800" s_name="KiKA HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="12410" ts_id="1013" freq="11391" prog_idx="1085866528" lcn="805" s_name="RTL UHD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="4718" ts_id="1015" freq="11421" prog_idx="1085932065" lcn="806" s_name=".1." fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="4719" ts_id="1015" freq="11421" prog_idx="1085932066" lcn="807" s_name=".2." fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="4720" ts_id="1015" freq="11421" prog_idx="1085932067" lcn="808" s_name=".3." fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="61300" ts_id="1017" freq="11464" prog_idx="1086063140" lcn="809" s_name="SAT.1 HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="61301" ts_id="1017" freq="11464" prog_idx="1086063141" lcn="810" s_name="ProSieben HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="61302" ts_id="1017" freq="11464" prog_idx="1086063142" lcn="811" s_name="kabel eins HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="61303" ts_id="1017" freq="11464" prog_idx="1086063143" lcn="812" s_name="SIXX HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="61304" ts_id="1017" freq="11464" prog_idx="1086063144" lcn="813" s_name="Pro7 MAXX HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="61305" ts_id="1017" freq="11464" prog_idx="1086063145" lcn="814" s_name="Kabel Eins Doku HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="61306" ts_id="1017" freq="11464" prog_idx="1086063146" lcn="815" s_name="SAT.1 GOLD HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="61322" ts_id="1017" freq="11464" prog_idx="1086063147" lcn="816" s_name="kabel eins HD Austria" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="61323" ts_id="1017" freq="11464" prog_idx="1086063148" lcn="817" s_name="sixx HD Austria" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="61324" ts_id="1017" freq="11464" prog_idx="1086063149" lcn="818" s_name="Pro7 MAXX HD Austria" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="61325" ts_id="1017" freq="11464" prog_idx="1086063150" lcn="819" s_name="Kabel 1 Doku HD Austri" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="61326" ts_id="1017" freq="11464" prog_idx="1086063151" lcn="820" s_name="SAT.1 GOLD HD Austria" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="10304" ts_id="1019" freq="11494" prog_idx="1086128688" lcn="821" s_name="SWR RLP HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="28332" ts_id="1021" freq="11523" prog_idx="1086259761" lcn="822" s_name="WDR HD Köln" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="28333" ts_id="1021" freq="11523" prog_idx="1086259762" lcn="823" s_name="WDR HD Aachen" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="28334" ts_id="1021" freq="11523" prog_idx="1086259763" lcn="824" s_name="WDR HD Bielefeld" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="28335" ts_id="1021" freq="11523" prog_idx="1086259764" lcn="825" s_name="WDR HD Bonn" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="28336" ts_id="1021" freq="11523" prog_idx="1086259765" lcn="826" s_name="WDR HD Dortmund" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="28337" ts_id="1021" freq="11523" prog_idx="1086259766" lcn="827" s_name="WDR HD Duisburg" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="28338" ts_id="1021" freq="11523" prog_idx="1086259767" lcn="828" s_name="WDR HD Düsseldorf" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="28339" ts_id="1021" freq="11523" prog_idx="1086259768" lcn="829" s_name="WDR HD Essen" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="28340" ts_id="1021" freq="11523" prog_idx="1086259769" lcn="830" s_name="WDR HD Münster" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="28341" ts_id="1021" freq="11523" prog_idx="1086259770" lcn="831" s_name="WDR HD Siegen" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="28370" ts_id="1021" freq="11523" prog_idx="1086259771" lcn="832" s_name="WDR Mediathek (Internet" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="28371" ts_id="1021" freq="11523" prog_idx="1086259772" lcn="833" s_name="arte Mediathek (Interne" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="6901" ts_id="1022" freq="11538" prog_idx="1086325309" lcn="834" s_name="ARIRANG HD" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="6905" ts_id="1022" freq="11538" prog_idx="1086325310" lcn="835" s_name="France 24 (en Francais)" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="6906" ts_id="1022" freq="11538" prog_idx="1086325311" lcn="836" s_name="France 24 (in English)" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="6915" ts_id="1022" freq="11538" prog_idx="1086325312" lcn="837" s_name="TV5 MONDE EUROPE HD" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="6918" ts_id="1022" freq="11538" prog_idx="1086325313" lcn="838" s_name="TRT WORLD HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="5800" ts_id="1023" freq="11553" prog_idx="1086390850" lcn="839" s_name="a.tv HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="5802" ts_id="1023" freq="11553" prog_idx="1086390851" lcn="840" s_name="rfo Regional Fernsehen " fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="5803" ts_id="1023" freq="11553" prog_idx="1086390852" lcn="841" s_name="a.tv HD ." fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="5805" ts_id="1023" freq="11553" prog_idx="1086390853" lcn="842" s_name="Lokal-TV-Portal HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="5807" ts_id="1023" freq="11553" prog_idx="1086390854" lcn="843" s_name="NIEDERBAYERN TV HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="5809" ts_id="1023" freq="11553" prog_idx="1086390855" lcn="844" s_name="Franken Plus HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="5810" ts_id="1023" freq="11553" prog_idx="1086390856" lcn="845" s_name="WOTSCH" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="10326" ts_id="1025" freq="11582" prog_idx="1086456393" lcn="846" s_name="BR Fernsehen Nord HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="10328" ts_id="1025" freq="11582" prog_idx="1086456394" lcn="847" s_name="NDR FS MV HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="10329" ts_id="1025" freq="11582" prog_idx="1086456395" lcn="848" s_name="NDR FS HH HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="10330" ts_id="1025" freq="11582" prog_idx="1086456396" lcn="849" s_name="NDR FS SH HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="5300" ts_id="1031" freq="11671" prog_idx="1086653005" lcn="850" s_name="SAT.1 HD Austria" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="5301" ts_id="1031" freq="11671" prog_idx="1086653006" lcn="851" s_name="ProSieben HD Austria" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="5303" ts_id="1031" freq="11671" prog_idx="1086653007" lcn="852" s_name="PULS 4 HD Austria" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="5304" ts_id="1031" freq="11671" prog_idx="1086653008" lcn="853" s_name="PULS 24 HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="5305" ts_id="1031" freq="11671" prog_idx="1086653009" lcn="854" s_name="4mediathek" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="22" ts_id="2" freq="11758" prog_idx="1086849618" lcn="855" s_name="Heimatkanal" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="133" ts_id="2" freq="11758" prog_idx="1086849619" lcn="856" s_name="Beate Uhse" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="139" ts_id="2" freq="11758" prog_idx="1086849620" lcn="857" s_name="Sky Cinema Feelgood" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="141" ts_id="2" freq="11758" prog_idx="1086849621" lcn="858" s_name="Sky Sport Mix" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="147" ts_id="2" freq="11758" prog_idx="1086849622" lcn="859" s_name="Sky One" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="278" ts_id="2" freq="11758" prog_idx="1086849623" lcn="860" s_name="Fussball.TV 1" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="402" ts_id="2" freq="11758" prog_idx="1086849624" lcn="861" s_name="Crime + Investigat" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="518" ts_id="2" freq="11758" prog_idx="1086849625" lcn="862" s_name="Romance TV" fta="0" />
+<ch type="TV" pol="V" sym="29500" s_id="5700" ts_id="1068" freq="11778" prog_idx="1086915162" lcn="863" s_name="DW English HD" fta="1" />
+<ch type="TV" pol="V" sym="29500" s_id="5701" ts_id="1068" freq="11778" prog_idx="1086915163" lcn="864" s_name="TVMonaco" fta="1" />
+<ch type="TV" pol="V" sym="29500" s_id="5703" ts_id="1068" freq="11778" prog_idx="1086915164" lcn="865" s_name="Cubavision Internaciona" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="101" ts_id="16" freq="11798" prog_idx="1086980701" lcn="866" s_name="Universal TV" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="123" ts_id="16" freq="11798" prog_idx="1086980702" lcn="867" s_name="Warner TV Serie" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="552" ts_id="16" freq="11798" prog_idx="1086980703" lcn="868" s_name="Sky Sport Bundesl" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="800" ts_id="16" freq="11798" prog_idx="1086980704" lcn="869" s_name="STEST1" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="28106" ts_id="1101" freq="11836" prog_idx="1087111777" lcn="870" s_name="DOKUSAT" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28107" ts_id="1101" freq="11836" prog_idx="1087111778" lcn="871" s_name="volksmusik.tv" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28110" ts_id="1101" freq="11836" prog_idx="1087111779" lcn="872" s_name="Astra Demo" fta="1" />
+<ch type="TV" pol="V" sym="29700" s_id="8204" ts_id="1072" freq="11856" prog_idx="1087177316" lcn="873" s_name="NRJ HITS" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8205" ts_id="1072" freq="11856" prog_idx="1087177317" lcn="874" s_name="GOLF+" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8207" ts_id="1072" freq="11856" prog_idx="1087177318" lcn="875" s_name="F3 BRETAGNE" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8209" ts_id="1072" freq="11856" prog_idx="1087177319" lcn="876" s_name="RMC DECOUVERTE" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8210" ts_id="1072" freq="11856" prog_idx="1087177320" lcn="877" s_name="BEIN SPORTS 2" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8211" ts_id="1072" freq="11856" prog_idx="1087177321" lcn="878" s_name="BEIN SPORTS 3" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8212" ts_id="1072" freq="11856" prog_idx="1087177322" lcn="879" s_name="TFX" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8213" ts_id="1072" freq="11856" prog_idx="1087177323" lcn="880" s_name="TMC" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8214" ts_id="1072" freq="11856" prog_idx="1087177324" lcn="881" s_name="FRANCE 2 UHD HDR" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8301" ts_id="1074" freq="11895" prog_idx="1087242861" lcn="882" s_name="BFM TV" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8305" ts_id="1074" freq="11895" prog_idx="1087242862" lcn="883" s_name="CANAL+LIVE 7" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8306" ts_id="1074" freq="11895" prog_idx="1087242863" lcn="884" s_name="CANAL+LIVE 8" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8307" ts_id="1074" freq="11895" prog_idx="1087242864" lcn="885" s_name="CANAL+LIVE 9" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8309" ts_id="1074" freq="11895" prog_idx="1087242865" lcn="886" s_name="RMC STORY" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8310" ts_id="1074" freq="11895" prog_idx="1087242866" lcn="887" s_name="L&apos;EQUIPE" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8314" ts_id="1074" freq="11895" prog_idx="1087242867" lcn="888" s_name="CANAL+GRAND ECRAN" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8315" ts_id="1074" freq="11895" prog_idx="1087242868" lcn="889" s_name="F3 AQUITAINE" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8316" ts_id="1074" freq="11895" prog_idx="1087242869" lcn="890" s_name="CANAL+LIVE 10" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8317" ts_id="1074" freq="11895" prog_idx="1087242870" lcn="891" s_name="CANAL+BOX OFFICE UHD" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8318" ts_id="1074" freq="11895" prog_idx="1087242871" lcn="892" s_name="CANAL+LIVE 6" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8321" ts_id="1074" freq="11895" prog_idx="1087242872" lcn="893" s_name="ARTE" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8323" ts_id="1074" freq="11895" prog_idx="1087242873" lcn="894" s_name="GULLI" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="13" ts_id="6" freq="11914" prog_idx="1087308410" lcn="895" s_name="Sky Crime" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="17" ts_id="6" freq="11914" prog_idx="1087308411" lcn="896" s_name="Sky Sport F1" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="118" ts_id="6" freq="11914" prog_idx="1087308412" lcn="897" s_name="Sky Nature" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="129" ts_id="6" freq="11914" prog_idx="1087308413" lcn="898" s_name="Sky Sport Top Even" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="130" ts_id="6" freq="11914" prog_idx="1087308414" lcn="899" s_name="NatGeo" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="131" ts_id="6" freq="11914" prog_idx="1087308415" lcn="900" s_name="Sky Cinema Premiere" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8901" ts_id="1076" freq="11934" prog_idx="1087373952" lcn="901" s_name="MTV" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8902" ts_id="1076" freq="11934" prog_idx="1087373953" lcn="902" s_name="TV5 MONDE" fta="1" />
+<ch type="TV" pol="V" sym="29700" s_id="8905" ts_id="1076" freq="11934" prog_idx="1087373954" lcn="903" s_name="F3 PICARDIE" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8906" ts_id="1076" freq="11934" prog_idx="1087373955" lcn="904" s_name="F3 PARIS IDF" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8908" ts_id="1076" freq="11934" prog_idx="1087373956" lcn="905" s_name="F3 POITOU CHARENT" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8909" ts_id="1076" freq="11934" prog_idx="1087373957" lcn="906" s_name="CANAL+" fta="1" />
+<ch type="TV" pol="V" sym="29700" s_id="8910" ts_id="1076" freq="11934" prog_idx="1087373958" lcn="907" s_name="CANAL+DOCS" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8911" ts_id="1076" freq="11934" prog_idx="1087373959" lcn="908" s_name="F3 CHAMP ARDENNE" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8912" ts_id="1076" freq="11934" prog_idx="1087373960" lcn="909" s_name="F3 NORMANDIE H" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8913" ts_id="1076" freq="11934" prog_idx="1087373961" lcn="910" s_name="F3 ALSACE" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8914" ts_id="1076" freq="11934" prog_idx="1087373962" lcn="911" s_name="F3 MIDI PYRENEES" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8916" ts_id="1076" freq="11934" prog_idx="1087373963" lcn="912" s_name="COMEDIE+" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8918" ts_id="1076" freq="11934" prog_idx="1087373964" lcn="913" s_name="MEZZO" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8921" ts_id="1076" freq="11934" prog_idx="1087373965" lcn="914" s_name="F3 FRANCHE COMTE" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8922" ts_id="1076" freq="11934" prog_idx="1087373966" lcn="915" s_name="F3 BOURGOGNE" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8923" ts_id="1076" freq="11934" prog_idx="1087373967" lcn="916" s_name="F3 ALPES" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8924" ts_id="1076" freq="11934" prog_idx="1087373968" lcn="917" s_name="F3 LIMOUSIN" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8925" ts_id="1076" freq="11934" prog_idx="1087373969" lcn="918" s_name="F3 LORRAINE" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8926" ts_id="1076" freq="11934" prog_idx="1087373970" lcn="919" s_name="NOVO19" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8927" ts_id="1076" freq="11934" prog_idx="1087373971" lcn="920" s_name="F3 NOA" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8928" ts_id="1076" freq="11934" prog_idx="1087373972" lcn="921" s_name="F3 CENTRE" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8929" ts_id="1076" freq="11934" prog_idx="1087373973" lcn="922" s_name="F3 COTE D&apos;AZUR" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="28006" ts_id="1079" freq="11954" prog_idx="1087439510" lcn="923" s_name="DFB.TV FREE" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9180" ts_id="1094" freq="12285" prog_idx="1222574743" lcn="1059" s_name="CONTACT FM" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9181" ts_id="1094" freq="12285" prog_idx="1222574744" lcn="1060" s_name="NOSTALGIE" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9182" ts_id="1094" freq="12285" prog_idx="1222574745" lcn="1061" s_name="NRJ" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9183" ts_id="1094" freq="12285" prog_idx="1222574746" lcn="1062" s_name="RFM" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9184" ts_id="1094" freq="12285" prog_idx="1222574747" lcn="1063" s_name="EUROPE 2" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9185" ts_id="1094" freq="12285" prog_idx="1222574748" lcn="1064" s_name="CHERIE FM" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9187" ts_id="1094" freq="12285" prog_idx="1222574749" lcn="1065" s_name="SKYROCK" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9194" ts_id="1094" freq="12285" prog_idx="1222574750" lcn="1066" s_name="RADIO NOTRE DAME" fta="1" />
+<ch type="RADIO" pol="V" sym="29700" s_id="9198" ts_id="1094" freq="12285" prog_idx="1222574751" lcn="1067" s_name="BEUR FM" fta="1" />
+<ch type="RADIO" pol="H" sym="27500" s_id="173" ts_id="5" freq="12460" prog_idx="1223033504" lcn="1138" s_name="Klassik Radio" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="4114" ts_id="1105" freq="12515" prog_idx="1223164577" lcn="1156" s_name="Nostalgie" fta="0" />
+<ch type="RADIO" pol="H" sym="22000" s_id="4122" ts_id="1105" freq="12515" prog_idx="1223164578" lcn="1158" s_name="VRT Radio1" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="28007" ts_id="1079" freq="11954" prog_idx="1087439523" lcn="924" s_name="Astra Demo" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28011" ts_id="1079" freq="11954" prog_idx="1087439524" lcn="925" s_name="Astra Demo" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28014" ts_id="1079" freq="11954" prog_idx="1087439525" lcn="926" s_name="Astra Demo" fta="1" />
+<ch type="TV" pol="V" sym="27500" s_id="28654" ts_id="1078" freq="11973" prog_idx="1087505062" lcn="927" s_name="MTV HD" fta="0" />
+<ch type="TV" pol="V" sym="27500" s_id="28655" ts_id="1078" freq="11973" prog_idx="1087505063" lcn="928" s_name="MTV HD AT" fta="0" />
+<ch type="TV" pol="V" sym="27500" s_id="28671" ts_id="1078" freq="11973" prog_idx="1087505064" lcn="929" s_name="MTV" fta="1" />
+<ch type="TV" pol="V" sym="27500" s_id="28678" ts_id="1078" freq="11973" prog_idx="1087505065" lcn="930" s_name="MTV" fta="1" />
+<ch type="TV" pol="V" sym="27500" s_id="28680" ts_id="1078" freq="11973" prog_idx="1087505066" lcn="931" s_name="Nick/Comedy Central+1" fta="1" />
+<ch type="TV" pol="V" sym="27500" s_id="28652" ts_id="1078" freq="11973" prog_idx="1087505067" lcn="932" s_name="Comedy Central HD" fta="0" />
+<ch type="TV" pol="V" sym="27500" s_id="28663" ts_id="1078" freq="11973" prog_idx="1087505068" lcn="933" s_name="Nick Jr.." fta="0" />
+<ch type="TV" pol="V" sym="27500" s_id="28665" ts_id="1078" freq="11973" prog_idx="1087505069" lcn="934" s_name="Nick Junior Global" fta="1" />
+<ch type="TV" pol="V" sym="27500" s_id="28667" ts_id="1078" freq="11973" prog_idx="1087505070" lcn="935" s_name="Nick.Jr." fta="0" />
+<ch type="TV" pol="V" sym="27500" s_id="28653" ts_id="1078" freq="11973" prog_idx="1087505071" lcn="936" s_name="Comedy Central HD AT" fta="0" />
+<ch type="RADIO" pol="H" sym="22000" s_id="4123" ts_id="1105" freq="12515" prog_idx="1223164592" lcn="1159" s_name="VRT Radio2" fta="0" />
+<ch type="RADIO" pol="H" sym="22000" s_id="4159" ts_id="1105" freq="12515" prog_idx="1223164593" lcn="1160" s_name="NRJ" fta="0" />
+<ch type="RADIO" pol="H" sym="22000" s_id="7289" ts_id="1111" freq="12604" prog_idx="1223492274" lcn="1189" s_name="Radio Horeb" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="7931" ts_id="1111" freq="12604" prog_idx="1223492275" lcn="1190" s_name="RTL RADIO" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="27" ts_id="13" freq="11992" prog_idx="1087570612" lcn="937" s_name="Nicktoons" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="110" ts_id="13" freq="11992" prog_idx="1087570613" lcn="938" s_name="Sky Atlantic" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="111" ts_id="13" freq="11992" prog_idx="1087570614" lcn="939" s_name="Sky Cinema Blockbus" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="112" ts_id="13" freq="11992" prog_idx="1087570615" lcn="940" s_name="Sky Documentaries" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="114" ts_id="13" freq="11992" prog_idx="1087570616" lcn="941" s_name="Sky Sport Tennis" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="127" ts_id="13" freq="11992" prog_idx="1087570617" lcn="942" s_name="13th Street" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="144" ts_id="13" freq="11992" prog_idx="1087570618" lcn="943" s_name="Sky Sport Golf" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8801" ts_id="1080" freq="12012" prog_idx="1087636155" lcn="944" s_name="CANAL+" fta="1" />
+<ch type="TV" pol="V" sym="29700" s_id="8803" ts_id="1080" freq="12012" prog_idx="1087636156" lcn="945" s_name="CANAL+CINEMA.S" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8804" ts_id="1080" freq="12012" prog_idx="1087636157" lcn="946" s_name="CANAL+SPORT" fta="1" />
+<ch type="TV" pol="V" sym="29700" s_id="8805" ts_id="1080" freq="12012" prog_idx="1087636158" lcn="947" s_name="CANAL+kids" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8807" ts_id="1080" freq="12012" prog_idx="1087636159" lcn="948" s_name="CINE+ FRISSON" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8809" ts_id="1080" freq="12012" prog_idx="1087636160" lcn="949" s_name="CINE+ CLASSIC" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8810" ts_id="1080" freq="12012" prog_idx="1087636161" lcn="950" s_name="CANAL+BOX OFFICE" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8814" ts_id="1080" freq="12012" prog_idx="1087636162" lcn="951" s_name="CANAL+ UHD HDR" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8816" ts_id="1080" freq="12012" prog_idx="1087636163" lcn="952" s_name="F3 CORSEVIASTELLA" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="8817" ts_id="1080" freq="12012" prog_idx="1087636164" lcn="953" s_name="CANAL+FOOT" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="23" ts_id="4" freq="12032" prog_idx="1087701701" lcn="954" s_name="Sky Krimi" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="116" ts_id="4" freq="12032" prog_idx="1087701702" lcn="955" s_name="Sky Cinema Action" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="119" ts_id="4" freq="12032" prog_idx="1087701703" lcn="956" s_name="NatGeo Wild" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="140" ts_id="4" freq="12032" prog_idx="1087701704" lcn="957" s_name="Warner TV Film" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="143" ts_id="4" freq="12032" prog_idx="1087701705" lcn="958" s_name="Sky Sport Austria 1" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="145" ts_id="4" freq="12032" prog_idx="1087701706" lcn="959" s_name="Sky Sport Premier L" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="298" ts_id="4" freq="12032" prog_idx="1087701707" lcn="960" s_name="Fussball.TV 3" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="341" ts_id="4" freq="12032" prog_idx="1087701708" lcn="961" s_name="Prime Sportsbar" fta="0" />
+<ch type="TV" pol="V" sym="27500" s_id="20007" ts_id="1082" freq="12051" prog_idx="1087767245" lcn="962" s_name="PULS 4 Austria" fta="0" />
+<ch type="TV" pol="V" sym="27500" s_id="20008" ts_id="1082" freq="12051" prog_idx="1087767246" lcn="963" s_name="SAT.1 HH/SH" fta="1" />
+<ch type="TV" pol="V" sym="27500" s_id="20009" ts_id="1082" freq="12051" prog_idx="1087767247" lcn="964" s_name="SAT.1 NS/Bremen" fta="1" />
+<ch type="TV" pol="V" sym="27500" s_id="20010" ts_id="1082" freq="12051" prog_idx="1087767248" lcn="965" s_name="SAT.1 RhlPf/Hessen" fta="1" />
+<ch type="TV" pol="V" sym="29700" s_id="9405" ts_id="1084" freq="12090" prog_idx="1087898321" lcn="966" s_name="F3 PROVENCE ALPES" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9406" ts_id="1084" freq="12090" prog_idx="1087898322" lcn="967" s_name="EUROSPORT 2" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9409" ts_id="1084" freq="12090" prog_idx="1087898323" lcn="968" s_name="PLANETE+CRIME" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9414" ts_id="1084" freq="12090" prog_idx="1087898324" lcn="969" s_name="TRACE URBAN" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9416" ts_id="1084" freq="12090" prog_idx="1087898325" lcn="970" s_name="CANAL+SPORT360" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9417" ts_id="1084" freq="12090" prog_idx="1087898326" lcn="971" s_name="F3 AUVERGNE" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9420" ts_id="1084" freq="12090" prog_idx="1087898327" lcn="972" s_name="MELODY" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9421" ts_id="1084" freq="12090" prog_idx="1087898328" lcn="973" s_name="NICKELODEON" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9422" ts_id="1084" freq="12090" prog_idx="1087898329" lcn="974" s_name="DORCEL XXX" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9423" ts_id="1084" freq="12090" prog_idx="1087898330" lcn="975" s_name="DORCEL TV" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9424" ts_id="1084" freq="12090" prog_idx="1087898331" lcn="976" s_name="CANAL+LIVE 5" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9425" ts_id="1084" freq="12090" prog_idx="1087898332" lcn="977" s_name="CANAL+LIVE 4" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9426" ts_id="1084" freq="12090" prog_idx="1087898333" lcn="978" s_name="PIWI+" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9427" ts_id="1084" freq="12090" prog_idx="1087898334" lcn="979" s_name="RFM TV" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9428" ts_id="1084" freq="12090" prog_idx="1087898335" lcn="980" s_name="TV BREIZH" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9429" ts_id="1084" freq="12090" prog_idx="1087898336" lcn="981" s_name="PLANETE+AVENTURE" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="28205" ts_id="1073" freq="12110" prog_idx="1087963873" lcn="982" s_name="Xplore" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28221" ts_id="1073" freq="12110" prog_idx="1087963874" lcn="983" s_name="DYN Sport Mix" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28224" ts_id="1073" freq="12110" prog_idx="1087963875" lcn="984" s_name="One Terra" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28225" ts_id="1073" freq="12110" prog_idx="1087963876" lcn="985" s_name="Deluxe Rap" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28226" ts_id="1073" freq="12110" prog_idx="1087963877" lcn="986" s_name="Deluxe Dance by Kontor" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28227" ts_id="1073" freq="12110" prog_idx="1087963878" lcn="987" s_name="Just Cooking" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28228" ts_id="1073" freq="12110" prog_idx="1087963879" lcn="988" s_name="Just Fishing" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28229" ts_id="1073" freq="12110" prog_idx="1087963880" lcn="989" s_name="Höhenrausch" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28230" ts_id="1073" freq="12110" prog_idx="1087963881" lcn="990" s_name="Crime Time" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28231" ts_id="1073" freq="12110" prog_idx="1087963882" lcn="991" s_name="SERIEN+" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="61" ts_id="7" freq="12148" prog_idx="1088029419" lcn="992" s_name="." fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="769" ts_id="7" freq="12148" prog_idx="1088029420" lcn="997" s_name="Shop LC" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="775" ts_id="7" freq="12148" prog_idx="1088029421" lcn="998" s_name="MediaShop- Meine Einka" fta="1" />
+<ch type="TV" pol="V" sym="29700" s_id="9302" ts_id="1088" freq="12168" prog_idx="1088094958" lcn="999" s_name="OCS" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9303" ts_id="1088" freq="12168" prog_idx="1088094959" lcn="1000" s_name="M6" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9304" ts_id="1088" freq="12168" prog_idx="1088094960" lcn="1001" s_name="W9" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9305" ts_id="1088" freq="12168" prog_idx="1088094961" lcn="1002" s_name="USHUAIA TV" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9306" ts_id="1088" freq="12168" prog_idx="1088094962" lcn="1003" s_name="FRANCE 2" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9308" ts_id="1088" freq="12168" prog_idx="1088094963" lcn="1004" s_name="LCP" fta="1" />
+<ch type="TV" pol="V" sym="29700" s_id="9309" ts_id="1088" freq="12168" prog_idx="1088094964" lcn="1005" s_name="FRANCE 3" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9312" ts_id="1088" freq="12168" prog_idx="1088094965" lcn="1006" s_name="TF1" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9313" ts_id="1088" freq="12168" prog_idx="1088094966" lcn="1007" s_name="EUROSPORT 1" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9314" ts_id="1088" freq="12168" prog_idx="1088094967" lcn="1008" s_name="BEIN SPORTS 1" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9316" ts_id="1088" freq="12168" prog_idx="1088094968" lcn="1009" s_name="F3 LANGUEDOCROUS" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9320" ts_id="1088" freq="12168" prog_idx="1088094969" lcn="1010" s_name="FRANCE 4" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9321" ts_id="1088" freq="12168" prog_idx="1088094970" lcn="1011" s_name="F3 RHONE ALPES" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9322" ts_id="1088" freq="12168" prog_idx="1088094971" lcn="1012" s_name="F3 NORD" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="12003" ts_id="1089" freq="12188" prog_idx="1088160508" lcn="1013" s_name="RTL Television" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="12004" ts_id="1089" freq="12188" prog_idx="1088160509" lcn="1014" s_name="RTL Regional NRW" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="12005" ts_id="1089" freq="12188" prog_idx="1088160510" lcn="1015" s_name="RTL HB NDS" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="12006" ts_id="1089" freq="12188" prog_idx="1088160511" lcn="1016" s_name="RTL Bayern" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="12009" ts_id="1089" freq="12188" prog_idx="1088160512" lcn="1017" s_name="RTL HH SH" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="12020" ts_id="1089" freq="12188" prog_idx="1088160513" lcn="1018" s_name="RTLZWEI" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="12030" ts_id="1089" freq="12188" prog_idx="1088160514" lcn="1019" s_name="TOGGO plus" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="12040" ts_id="1089" freq="12188" prog_idx="1088160515" lcn="1020" s_name="SUPER RTL" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="12060" ts_id="1089" freq="12188" prog_idx="1088160516" lcn="1021" s_name="VOX" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="12061" ts_id="1089" freq="12188" prog_idx="1088160517" lcn="1022" s_name="NITRO" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="12080" ts_id="1089" freq="12188" prog_idx="1088160518" lcn="1023" s_name="RTLup" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="12090" ts_id="1089" freq="12188" prog_idx="1088160519" lcn="1024" s_name="ntv" fta="1" />
+<ch type="TV" pol="V" sym="29700" s_id="9002" ts_id="1090" freq="12207" prog_idx="1088226056" lcn="1026" s_name="T18" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9004" ts_id="1090" freq="12207" prog_idx="1088226057" lcn="1027" s_name="PARIS PREMIERE" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9005" ts_id="1090" freq="12207" prog_idx="1088226058" lcn="1028" s_name="TELETOON+" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9006" ts_id="1090" freq="12207" prog_idx="1088226059" lcn="1029" s_name="PLANETE+" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9007" ts_id="1090" freq="12207" prog_idx="1088226060" lcn="1030" s_name="F3 NORMANDIE B" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9008" ts_id="1090" freq="12207" prog_idx="1088226061" lcn="1031" s_name="FRANCE 5" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9009" ts_id="1090" freq="12207" prog_idx="1088226062" lcn="1032" s_name="LCI" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9010" ts_id="1090" freq="12207" prog_idx="1088226063" lcn="1033" s_name="INFOSPORT+" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9011" ts_id="1090" freq="12207" prog_idx="1088226064" lcn="1034" s_name="F3 PAYS DE LA LOIRE" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9013" ts_id="1090" freq="12207" prog_idx="1088226065" lcn="1035" s_name="CSTAR" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9014" ts_id="1090" freq="12207" prog_idx="1088226066" lcn="1036" s_name="CNEWS" fta="1" />
+<ch type="TV" pol="V" sym="29700" s_id="9016" ts_id="1090" freq="12207" prog_idx="1088226067" lcn="1037" s_name="XXL" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9017" ts_id="1090" freq="12207" prog_idx="1088226068" lcn="1038" s_name="EVENEMENT SPORT UHD HDR" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="28820" ts_id="1091" freq="12226" prog_idx="1088291605" lcn="1039" s_name="VOXup" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="31210" ts_id="1091" freq="12226" prog_idx="1088291606" lcn="1040" s_name="HSE Extra" fta="1" />
+<ch type="TV" pol="V" sym="29700" s_id="17020" ts_id="1094" freq="12285" prog_idx="1088357143" lcn="1068" s_name="AUTOMOTO la chaine" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="17021" ts_id="1094" freq="12285" prog_idx="1088357144" lcn="1069" s_name="AB1" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="17022" ts_id="1094" freq="12285" prog_idx="1088357145" lcn="1070" s_name="ANIMAUX" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="17026" ts_id="1094" freq="12285" prog_idx="1088357146" lcn="1071" s_name="Toute L Histoire" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="17029" ts_id="1094" freq="12285" prog_idx="1088357147" lcn="1072" s_name="Seasons" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="17030" ts_id="1094" freq="12285" prog_idx="1088357148" lcn="1073" s_name="ACTION" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="17035" ts_id="1094" freq="12285" prog_idx="1088357149" lcn="1074" s_name="RTL9" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="17036" ts_id="1094" freq="12285" prog_idx="1088357150" lcn="1075" s_name="CHASSE ET PECHE" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="17037" ts_id="1094" freq="12285" prog_idx="1088357151" lcn="1076" s_name="Histoire" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="17038" ts_id="1094" freq="12285" prog_idx="1088357152" lcn="1077" s_name="Canal J" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="17039" ts_id="1094" freq="12285" prog_idx="1088357153" lcn="1078" s_name="6 Ter" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="17040" ts_id="1094" freq="12285" prog_idx="1088357154" lcn="1079" s_name="France Info:" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="17041" ts_id="1094" freq="12285" prog_idx="1088357155" lcn="1080" s_name="TF1 Serie Films" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="28" ts_id="12" freq="12304" prog_idx="1088422692" lcn="1081" s_name="Cartoonito" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="105" ts_id="12" freq="12304" prog_idx="1088422693" lcn="1082" s_name="Sky Sport Bundesliga" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="107" ts_id="12" freq="12304" prog_idx="1088422694" lcn="1083" s_name="Sky Cinema Classics" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="108" ts_id="12" freq="12304" prog_idx="1088422695" lcn="1084" s_name="Sky Sport News" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="126" ts_id="12" freq="12304" prog_idx="1088422696" lcn="1085" s_name="Sky Sci-Fi" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="288" ts_id="12" freq="12304" prog_idx="1088422697" lcn="1086" s_name="Fussball.TV 2" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="801" ts_id="12" freq="12304" prog_idx="1088422698" lcn="1087" s_name="STEST2" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="2027" ts_id="12" freq="12304" prog_idx="1088422699" lcn="1088" s_name="AXN Black" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9601" ts_id="1096" freq="12324" prog_idx="1088488236" lcn="1089" s_name="OLYMPIA TV" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9602" ts_id="1096" freq="12324" prog_idx="1088488237" lcn="1090" s_name="BEIN SPORTS MAX 4" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9603" ts_id="1096" freq="12324" prog_idx="1088488238" lcn="1091" s_name="BEIN SPORTS MAX 5" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9604" ts_id="1096" freq="12324" prog_idx="1088488239" lcn="1092" s_name="BEIN SPORTS MAX 6" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9605" ts_id="1096" freq="12324" prog_idx="1088488240" lcn="1093" s_name="BEIN SPORTS MAX 7" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9606" ts_id="1096" freq="12324" prog_idx="1088488241" lcn="1094" s_name="BEIN SPORTS MAX 8" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9607" ts_id="1096" freq="12324" prog_idx="1088488242" lcn="1095" s_name="BEIN SPORTS MAX 9" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9608" ts_id="1096" freq="12324" prog_idx="1088488243" lcn="1096" s_name="BEIN SPORTS MAX 10" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9609" ts_id="1096" freq="12324" prog_idx="1088488244" lcn="1097" s_name="CINE+ FESTIVAL" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9610" ts_id="1096" freq="12324" prog_idx="1088488245" lcn="1098" s_name="CINE+ FAMILY" fta="0" />
+<ch type="RADIO" pol="H" sym="22000" s_id="12654" ts_id="1113" freq="12633" prog_idx="1223557942" lcn="1205" s_name="ffn" fta="1" />
+<ch type="TV" pol="V" sym="29700" s_id="9611" ts_id="1096" freq="12324" prog_idx="1088488247" lcn="1099" s_name="CINE+ EMOTION" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9612" ts_id="1096" freq="12324" prog_idx="1088488248" lcn="1100" s_name="SERIE CLUB" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9613" ts_id="1096" freq="12324" prog_idx="1088488249" lcn="1101" s_name="VIXEN" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9614" ts_id="1096" freq="12324" prog_idx="1088488250" lcn="1102" s_name="UNIONTV" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9616" ts_id="1096" freq="12324" prog_idx="1088488251" lcn="1103" s_name="NOVELAS TV" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9617" ts_id="1096" freq="12324" prog_idx="1088488252" lcn="1104" s_name="LA CHAINE METEO" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="9619" ts_id="1096" freq="12324" prog_idx="1088488253" lcn="1105" s_name="CANAL+LIVE 3" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="113" ts_id="11" freq="12382" prog_idx="1088619326" lcn="1106" s_name="HISTORY Channel" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="122" ts_id="11" freq="12382" prog_idx="1088619327" lcn="1107" s_name="DAZN 2" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="132" ts_id="11" freq="12382" prog_idx="1088619328" lcn="1108" s_name="DAZN 1" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="136" ts_id="11" freq="12382" prog_idx="1088619329" lcn="1109" s_name="Warner TV Comedy" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="142" ts_id="11" freq="12382" prog_idx="1088619330" lcn="1110" s_name="Sky Showcase" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="168" ts_id="11" freq="12382" prog_idx="1088619331" lcn="1111" s_name="Motorvision+" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="401" ts_id="11" freq="12382" prog_idx="1088619332" lcn="1112" s_name="Jukebox" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="404" ts_id="11" freq="12382" prog_idx="1088619333" lcn="1113" s_name="Cartoon Network" fta="0" />
+<ch type="TV" pol="H" sym="27500" s_id="2028" ts_id="11" freq="12382" prog_idx="1088619334" lcn="1114" s_name="AXN White" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="10001" ts_id="1100" freq="12402" prog_idx="1088684871" lcn="1115" s_name="CANAL+LIVE 1" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="10002" ts_id="1100" freq="12402" prog_idx="1088684872" lcn="1116" s_name="A LA UNE" fta="1" />
+<ch type="TV" pol="V" sym="29700" s_id="10004" ts_id="1100" freq="12402" prog_idx="1088684873" lcn="1117" s_name="POLAR+" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="10005" ts_id="1100" freq="12402" prog_idx="1088684874" lcn="1118" s_name="NICKTOONS" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="10006" ts_id="1100" freq="12402" prog_idx="1088684875" lcn="1119" s_name="NICKELODEON JUNIOR" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="10007" ts_id="1100" freq="12402" prog_idx="1088684876" lcn="1120" s_name="EQUIDIA" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="10008" ts_id="1100" freq="12402" prog_idx="1088684877" lcn="1121" s_name="MEZZO LIVE" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="10009" ts_id="1100" freq="12402" prog_idx="1088684878" lcn="1122" s_name="MAN X" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="10010" ts_id="1100" freq="12402" prog_idx="1088684879" lcn="1123" s_name="TEVA" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="10011" ts_id="1100" freq="12402" prog_idx="1088684880" lcn="1124" s_name="PINK X" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="10012" ts_id="1100" freq="12402" prog_idx="1088684881" lcn="1125" s_name="CHAINE EVENEMENT" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="10013" ts_id="1100" freq="12402" prog_idx="1088684882" lcn="1126" s_name="CANAL+LIVE 2" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="10014" ts_id="1100" freq="12402" prog_idx="1088684883" lcn="1127" s_name="EUROPE 2 POP TV" fta="0" />
+<ch type="TV" pol="V" sym="29700" s_id="10016" ts_id="1100" freq="12402" prog_idx="1088684884" lcn="1128" s_name="EUROPE 1 TV" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28306" ts_id="1201" freq="12422" prog_idx="1088750421" lcn="1129" s_name="Astra Demo" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28307" ts_id="1201" freq="12422" prog_idx="1088750422" lcn="1130" s_name="Astra Demo" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28308" ts_id="1201" freq="12422" prog_idx="1088750423" lcn="1131" s_name="Astra Demo" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28309" ts_id="1201" freq="12422" prog_idx="1088750424" lcn="1132" s_name="Astra Demo" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28310" ts_id="1201" freq="12422" prog_idx="1088750425" lcn="1133" s_name="Astra Demo" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28311" ts_id="1201" freq="12422" prog_idx="1088750426" lcn="1134" s_name="Astra Demo" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28385" ts_id="1201" freq="12422" prog_idx="1088750427" lcn="1135" s_name="Astra Demo" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="28386" ts_id="1201" freq="12422" prog_idx="1088750428" lcn="1136" s_name="Astra Demo" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="62" ts_id="5" freq="12460" prog_idx="1088815965" lcn="1137" s_name="EWTN katholisches TV" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="659" ts_id="5" freq="12460" prog_idx="1088815966" lcn="1139" s_name="Handystar TV" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="662" ts_id="5" freq="12460" prog_idx="1088815967" lcn="1140" s_name="TELEGOLD 2" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="764" ts_id="5" freq="12460" prog_idx="1088815968" lcn="1141" s_name="Anixe+" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="772" ts_id="5" freq="12460" prog_idx="1088815969" lcn="1142" s_name="TLC" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="776" ts_id="5" freq="12460" prog_idx="1088815970" lcn="1143" s_name="DMF" fta="1" />
+<ch type="TV" pol="H" sym="27500" s_id="1794" ts_id="5" freq="12460" prog_idx="1088815971" lcn="1144" s_name="QVC" fta="1" />
+<ch type="TV" pol="V" sym="27500" s_id="32" ts_id="33" freq="12480" prog_idx="1088881508" lcn="1145" s_name="Sonnenklar TV" fta="1" />
+<ch type="TV" pol="V" sym="27500" s_id="40" ts_id="33" freq="12480" prog_idx="1088881509" lcn="1146" s_name="HSE SD" fta="1" />
+<ch type="TV" pol="V" sym="27500" s_id="46" ts_id="33" freq="12480" prog_idx="1088881510" lcn="1147" s_name="Handystar TV 2" fta="1" />
+<ch type="TV" pol="V" sym="27500" s_id="47" ts_id="33" freq="12480" prog_idx="1088881511" lcn="1148" s_name="REGIO TV" fta="1" />
+<ch type="TV" pol="V" sym="27500" s_id="63" ts_id="33" freq="12480" prog_idx="1088881512" lcn="1149" s_name="DMAX" fta="1" />
+<ch type="TV" pol="V" sym="27500" s_id="77" ts_id="33" freq="12480" prog_idx="1088881513" lcn="1150" s_name="HSE Trend SD" fta="1" />
+<ch type="TV" pol="V" sym="27500" s_id="661" ts_id="33" freq="12480" prog_idx="1088881514" lcn="1151" s_name="Spirit TV" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="4102" ts_id="1105" freq="12515" prog_idx="1088947051" lcn="1152" s_name="AB3" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="4115" ts_id="1105" freq="12515" prog_idx="1088947052" lcn="1153" s_name="Bergblick" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="4107" ts_id="1105" freq="12515" prog_idx="1088947053" lcn="1154" s_name="Hustler TV" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="4109" ts_id="1105" freq="12515" prog_idx="1088947054" lcn="1155" s_name="Hustler TV CZ" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="4124" ts_id="1105" freq="12515" prog_idx="1088947055" lcn="1157" s_name="CANAL+ Action" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="4101" ts_id="1105" freq="12515" prog_idx="1088947056" lcn="1161" s_name="BVN" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="4105" ts_id="1105" freq="12515" prog_idx="1088947057" lcn="1162" s_name="INPLUS." fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="4106" ts_id="1105" freq="12515" prog_idx="1088947058" lcn="1163" s_name="INPLUS" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="4127" ts_id="1105" freq="12515" prog_idx="1088947059" lcn="1164" s_name="Canal+ Action B2B" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="4128" ts_id="1105" freq="12515" prog_idx="1088947060" lcn="1165" s_name="CANAL+ Golf" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="17500" ts_id="1107" freq="12545" prog_idx="1089078133" lcn="1166" s_name="SAT.1" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="17501" ts_id="1107" freq="12545" prog_idx="1089078134" lcn="1167" s_name="ProSieben" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="17502" ts_id="1107" freq="12545" prog_idx="1089078135" lcn="1168" s_name="kabel eins" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="17504" ts_id="1107" freq="12545" prog_idx="1089078136" lcn="1169" s_name="SAT.1 Gold" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="17505" ts_id="1107" freq="12545" prog_idx="1089078137" lcn="1170" s_name="Pro7 MAXX" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="17506" ts_id="1107" freq="12545" prog_idx="1089078138" lcn="1171" s_name="sixx" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="17507" ts_id="1107" freq="12545" prog_idx="1089078139" lcn="1172" s_name="SAT.1 Bayern" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="17508" ts_id="1107" freq="12545" prog_idx="1089078140" lcn="1173" s_name="SAT.1 NRW" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="17509" ts_id="1107" freq="12545" prog_idx="1089078141" lcn="1174" s_name="kabel eins Doku" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="12100" ts_id="1108" freq="12552" prog_idx="1089143678" lcn="1175" s_name="QVC Deutschland" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="12137" ts_id="1108" freq="12552" prog_idx="1089143679" lcn="1176" s_name="Canal Algerie" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="12138" ts_id="1108" freq="12552" prog_idx="1089143680" lcn="1177" s_name="Algerie 3" fta="1" />
+<ch type="TV" pol="V" sym="22000" s_id="12140" ts_id="1108" freq="12552" prog_idx="1089143681" lcn="1178" s_name="RMC LIFE" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="12141" ts_id="1108" freq="12552" prog_idx="1089143682" lcn="1179" s_name="RMC LIFE" fta="0" />
+<ch type="TV" pol="V" sym="22000" s_id="12186" ts_id="1108" freq="12552" prog_idx="1089143683" lcn="1180" s_name="SBN International" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="5400" ts_id="1109" freq="12574" prog_idx="1089209220" lcn="1181" s_name="sonnenklar.TV HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="5401" ts_id="1109" freq="12574" prog_idx="1089209221" lcn="1182" s_name="TELE 5 HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="5402" ts_id="1109" freq="12574" prog_idx="1089209222" lcn="1183" s_name="DMAX HD" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="5403" ts_id="1109" freq="12574" prog_idx="1089209223" lcn="1184" s_name="Juwelo HD" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="5404" ts_id="1109" freq="12574" prog_idx="1089209224" lcn="1185" s_name="pearl.tv HD Shop" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="5421" ts_id="1109" freq="12574" prog_idx="1089209225" lcn="1186" s_name="TELE 5 HD Austria" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="5422" ts_id="1109" freq="12574" prog_idx="1089209226" lcn="1187" s_name="DMAX HD Austria" fta="0" />
+<ch type="TV" pol="H" sym="22000" s_id="7200" ts_id="1111" freq="12604" prog_idx="1089274763" lcn="1188" s_name="Bloomberg Europe TV" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="28534" ts_id="1111" freq="12604" prog_idx="1089274764" lcn="1191" s_name="Astra Demo" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="28535" ts_id="1111" freq="12604" prog_idx="1089274765" lcn="1192" s_name="Astra Demo" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="28536" ts_id="1111" freq="12604" prog_idx="1089274766" lcn="1193" s_name="Astra Demo" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="28537" ts_id="1111" freq="12604" prog_idx="1089274767" lcn="1194" s_name="Astra Demo" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="12616" ts_id="1113" freq="12633" prog_idx="1089340304" lcn="1195" s_name="Shop LC" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="12622" ts_id="1113" freq="12633" prog_idx="1089340305" lcn="1196" s_name="Sexy Girls TV" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="12655" ts_id="1113" freq="12633" prog_idx="1223558034" lcn="1206" s_name="Radio Paloma" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="12623" ts_id="1113" freq="12633" prog_idx="1089340307" lcn="1197" s_name="Heisse Dates TV" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="12656" ts_id="1113" freq="12633" prog_idx="1223558036" lcn="1207" s_name="Radio HBR" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="12657" ts_id="1113" freq="12633" prog_idx="1223558037" lcn="1208" s_name="Radio HCJB" fta="1" />
+<ch type="RADIO" pol="H" sym="22000" s_id="13140" ts_id="1115" freq="12663" prog_idx="1223623574" lcn="1216" s_name="RADIO MARIA" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="12624" ts_id="1113" freq="12633" prog_idx="1089340311" lcn="1198" s_name="Hot Babes TV" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="12625" ts_id="1113" freq="12633" prog_idx="1089340312" lcn="1199" s_name="Mobile Sex" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="12626" ts_id="1113" freq="12633" prog_idx="1089340313" lcn="1200" s_name="Sex-Kontakte" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="12635" ts_id="1113" freq="12633" prog_idx="1089340314" lcn="1201" s_name="Babestation24" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="12639" ts_id="1113" freq="12633" prog_idx="1089340315" lcn="1202" s_name="EROTIKA TV - NEU!" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="12640" ts_id="1113" freq="12633" prog_idx="1089340316" lcn="1203" s_name="Sexy Treff TV" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="12641" ts_id="1113" freq="12633" prog_idx="1089340317" lcn="1204" s_name="TeleSex TV" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13101" ts_id="1115" freq="12663" prog_idx="1089405854" lcn="1209" s_name="Service 13101" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13106" ts_id="1115" freq="12663" prog_idx="1089405855" lcn="1210" s_name="Shop LC" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13107" ts_id="1115" freq="12663" prog_idx="1089405856" lcn="1211" s_name="Neuer Sender" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13110" ts_id="1115" freq="12663" prog_idx="1089405857" lcn="1212" s_name="Genius TV" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13111" ts_id="1115" freq="12663" prog_idx="1089405858" lcn="1213" s_name="Service 13111" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13112" ts_id="1115" freq="12663" prog_idx="1089405859" lcn="1214" s_name="4MEDIATHEK" fta="1" />
+<ch type="TV" pol="H" sym="22000" s_id="13113" ts_id="1115" freq="12663" prog_idx="1089405860" lcn="1215" s_name="L-TV" fta="1" />
+</ch_List>
