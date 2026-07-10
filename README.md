@@ -1,5 +1,7 @@
 # SORALink
 
+![SORALink](soralink.jpg)
+
 SORALink is a small, dependency-free C bridge that connects a compatible network satellite tuner/dongle to [VLC media player](https://www.videolan.org/vlc/).
 
 It acquires the device's control session, tunes a saved program or a DVB service, receives MPEG transport-stream data from the device, processes the packets, and forwards the resulting stream to VLC.
