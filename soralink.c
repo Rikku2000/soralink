@@ -12,10 +12,12 @@
 #include <time.h>
 #include <ctype.h>
 #include <limits.h>
+#include <stdarg.h>
 
 #ifdef SORALINK_USE_OPENSSL
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <openssl/x509v3.h>
 #endif
 
 #ifdef _WIN32
@@ -66,6 +68,8 @@ static void sleep_ms(unsigned milliseconds)
 #define DEFAULT_STREAM_PORT  8800
 #define HTTP_CLIENT_LIMIT     64
 #define XML_FILE_LIMIT        (64U * 1024U * 1024U)
+#define HTTP_DOWNLOAD_HEADER_LIMIT (64U * 1024U)
+#define HTTP_REDIRECT_LIMIT    5
 
 #define FRAME_SIZE       31
 #define CSW_SIZE         13
@@ -99,6 +103,23 @@ typedef struct {
     socklen_t length;
     int family;
 } endpoint_t;
+
+typedef struct {
+    char device_ip[512];
+    char vlc_ip[512];
+    char dump_path[1024];
+    char channels_path[1024];
+    char http_bind_ip[512];
+    char http_user[256];
+    char http_password[256];
+    char admin_user[256];
+    char admin_password[256];
+    char tls_cert_path[1024];
+    char tls_key_path[1024];
+    char web_root[1024];
+    char epg_path[1024];
+    char epg_url[2048];
+} option_text_storage_t;
 
 typedef struct {
     const char *device_ip;
@@ -143,8 +164,29 @@ typedef struct {
     uint32_t max_http_clients;
     const char *http_user;
     const char *http_password;
+    const char *admin_user;
+    const char *admin_password;
+    bool web_ui;
+    const char *web_root;
+    const char *epg_path;
+    bool epg_update;
+    const char *epg_url;
+    int epg_update_timeout_ms;
+    bool device_channels_update;
+    bool device_epg_update;
+    uint32_t device_channels_refresh_minutes;
+    uint32_t device_epg_refresh_minutes;
+    uint32_t device_scan_refresh_minutes;
+    uint32_t device_scan_timeout_minutes;
+    uint32_t device_scan_search_range;
+    uint32_t device_scan_order_by;
+    bool device_scan_network;
+    bool device_scan_epg_after;
+    bool device_update_on_start;
     const char *tls_cert_path;
     const char *tls_key_path;
+    const char *config_path;
+    option_text_storage_t text;
 } options_t;
 
 typedef struct {
@@ -154,8 +196,12 @@ typedef struct {
     uint32_t service_id;
     uint32_t frequency_mhz;
     uint32_t lcn;
+    uint32_t program_index;
+    uint32_t transport_stream_id;
+    bool have_program_index;
     bool fta;
     char name[256];
+    char epg_id[256];
 } channel_t;
 
 typedef struct {
@@ -164,12 +210,66 @@ typedef struct {
 } channel_list_t;
 
 typedef struct {
+    char channel_id[256];
+    int64_t start_utc;
+    int64_t stop_utc;
+    char title[256];
+    char subtitle[256];
+    char description[768];
+    char category[128];
+} epg_program_t;
+
+typedef struct {
+    epg_program_t *items;
+    size_t count;
+    int64_t loaded_utc;
+} epg_list_t;
+
+typedef struct {
+    bool busy;
+    int64_t last_channels_attempt_utc;
+    int64_t last_channels_success_utc;
+    int64_t last_epg_attempt_utc;
+    int64_t last_epg_success_utc;
+    size_t last_epg_updated_channels;
+    size_t last_epg_skipped_channels;
+    size_t last_epg_failed_channels;
+    char last_action[64];
+    char last_message[256];
+    double next_channels_due;
+    double next_epg_due;
+    double next_scan_due;
+    unsigned epg_length_response_bytes;
+
+    bool scan_running;
+    bool scan_cancel_requested;
+    int64_t last_scan_attempt_utc;
+    int64_t last_scan_success_utc;
+    unsigned scan_progress;
+    unsigned scan_state;
+    uint32_t scan_frequency_mhz;
+    uint32_t scan_symbol_rate_ks;
+    unsigned scan_mode;
+    unsigned scan_tv_count;
+    unsigned scan_radio_count;
+    double scan_started;
+    double scan_next_poll;
+    double scan_deadline;
+} device_update_state_t;
+
+typedef struct {
     bool valid;
     uint32_t frequency_mhz;
     uint32_t symbol_rate_ks;
     char polarization;
     uint32_t service_id;
 } tuning_state_t;
+
+typedef enum {
+    TUNE_RESULT_OK = 0,
+    TUNE_RESULT_NO_LOCK,
+    TUNE_RESULT_CONTROL_ERROR
+} tune_result_t;
 
 #ifdef _WIN32
 static BOOL WINAPI console_handler(DWORD signal_type)
@@ -200,7 +300,8 @@ static void print_usage(const char *program)
     fprintf(stderr,
         "SORALink -> VLC bridge\n\n"
         "Playlist-server mode:\n"
-        "  %s --device HOST --server --channels channels.xml [options]\n\n"
+        "  %s --device HOST --server --channels channels.xml [options]\n"
+        "  %s --config soralink.conf [command-line overrides]\n\n"
         "Single-channel UDP modes:\n"
         "  %s --device HOST --progidx N [options]\n"
         "  %s --device HOST --freq MHz --sr kSym/s --pol H|V|F|O --sid N [options]\n"
@@ -231,17 +332,45 @@ static void print_usage(const char *program)
         "  --even-key HEX       16-byte even AES key (32 hexadecimal digits)\n"
         "  --odd-key HEX        16-byte odd AES key (32 hexadecimal digits)\n"
         "  --no-default-key     Do not use the legacy built-in even key\n"
-        "  --missing-key MODE   pass or drop encrypted packets (default pass)\n\n"
+        "  --missing-key MODE   pass or drop encrypted packets (default pass)\n\n",
+        program, program, program, program, program, program, program);
+
+    fprintf(stderr,
         "HTTP server options:\n"
         "  --server             Run the local HTTP playlist/stream server\n"
         "  --channels FILE      Channel XML file (default channels.xml)\n"
         "  --http-bind HOST     Listen address/name (default 127.0.0.1)\n"
         "  --http-port N        HTTP listen port (default 8080)\n"
         "  --max-clients N      Simultaneous viewers of one channel (default 8)\n"
-        "  --http-user USER     Enable HTTP Basic authentication\n"
-        "  --http-password PASS Password for HTTP Basic authentication\n"
+        "  --http-user USER     Viewer HTTP Basic username\n"
+        "  --http-password PASS Viewer HTTP Basic password\n"
+        "  --admin-user USER    Web UI administrator username\n"
+        "  --admin-password PASS Web UI administrator password\n"
+        "  --webui              Enable the administration Web UI (default)\n"
+        "  --no-webui           Disable the administration Web UI\n"
+        "  --web-root DIR       Web assets directory (default: web beside binary)\n"
+        "  --epg FILE           Optional XMLTV EPG file (default: epg.xml beside binary)\n"
+        "  --epg-update         Download the XMLTV file once before server startup\n"
+        "  --no-epg-update      Do not download XMLTV at startup (default)\n"
+        "  --epg-url URL        HTTP/HTTPS XMLTV URL used by --epg-update\n"
+        "  --epg-update-timeout-ms N  EPG download timeout (default 30000)\n"
+        "  --device-channels-update  Refresh channel XML from the Device\n"
+        "  --no-device-channels-update  Disable native channel refresh (default)\n"
+        "  --device-epg-update   Refresh XMLTV from the Device EPG cache\n"
+        "  --no-device-epg-update  Disable native EPG refresh (default)\n"
+        "  --device-channels-refresh-minutes N  Periodic channel refresh; 0 disables\n"
+        "  --device-epg-refresh-minutes N  Periodic EPG refresh; 0 disables\n"
+        "  --device-scan-refresh-minutes N  Periodic receiver scan; 0 disables\n"
+        "  --device-scan-timeout-minutes N  Scan timeout (default 30)\n"
+        "  --device-scan-network | --no-device-scan-network\n"
+        "  --device-scan-epg-after | --no-device-scan-epg-after\n"
+        "  --device-scan-search-range N  Receiver scan range code 0..7\n"
+        "  --device-scan-order-by N  Receiver ordering code 0..3\n"
+        "  --device-update-on-start | --no-device-update-on-start\n"
         "  --tls-cert FILE      TLS certificate PEM (requires OpenSSL build)\n"
         "  --tls-key FILE       TLS private-key PEM (requires OpenSSL build)\n\n"
+        "Configuration:\n"
+        "  --config FILE        Load key=value settings before CLI overrides\n\n"
         "Other options:\n"
         "  --vlc-ip HOST        UDP-mode VLC DNS/IPv4/IPv6 destination\n"
         "  --vlc-port N         UDP-mode VLC port (default 1234)\n"
@@ -256,8 +385,15 @@ static void print_usage(const char *program)
         "  /playlist.m3u        TV and radio playlist\n"
         "  /tv.m3u              TV-only playlist\n"
         "  /radio.m3u           Radio-only playlist\n"
-        "  /status.json         Current channel/client status\n",
-        program, program, program, program, program, program);
+        "  /status.json         Current channel/client status\n"
+        "  /admin/              Administration dashboard and viewer controls\n"
+        "  /admin/api/status    Dashboard JSON API\n"
+        "  /admin/api/epg/LCN   XMLTV schedule for a channel\n"
+        "  POST /admin/device/update-channels  Refresh lineup from device\n"
+        "  POST /admin/device/update-epg       Refresh EPG from device\n"
+        "  POST /admin/device/update-all      Refresh channels and EPG\n"
+        "  POST /admin/device/scan            Start receiver channel scan\n"
+        "  POST /admin/device/scan-cancel     Cancel receiver channel scan\n");
 }
 
 static bool parse_u32(const char *text, uint32_t *value)
@@ -347,13 +483,496 @@ static bool parse_polarization(const char *text, char *polarization)
     return true;
 }
 
+static char *trim_config_text(char *text)
+{
+    char *end;
+    while (*text != '\0' && isspace((unsigned char)*text)) {
+        ++text;
+    }
+    end = text + strlen(text);
+    while (end > text && isspace((unsigned char)end[-1])) {
+        --end;
+    }
+    *end = '\0';
+    return text;
+}
+
+static bool parse_bool_value(const char *text, bool *value)
+{
+    if (STRNCASECMP(text, "true", 5) == 0 && text[4] == '\0') {
+        *value = true;
+        return true;
+    }
+    if (STRNCASECMP(text, "yes", 4) == 0 && text[3] == '\0') {
+        *value = true;
+        return true;
+    }
+    if (strcmp(text, "1") == 0 ||
+        (STRNCASECMP(text, "on", 3) == 0 && text[2] == '\0')) {
+        *value = true;
+        return true;
+    }
+    if (STRNCASECMP(text, "false", 6) == 0 && text[5] == '\0') {
+        *value = false;
+        return true;
+    }
+    if (STRNCASECMP(text, "no", 3) == 0 && text[2] == '\0') {
+        *value = false;
+        return true;
+    }
+    if (strcmp(text, "0") == 0 ||
+        (STRNCASECMP(text, "off", 4) == 0 && text[3] == '\0')) {
+        *value = false;
+        return true;
+    }
+    return false;
+}
+
+static bool store_config_text(char *storage,
+                              size_t storage_capacity,
+                              const char *value,
+                              const char **target,
+                              bool empty_is_null)
+{
+    const size_t length = strlen(value);
+    if (length + 1U > storage_capacity) {
+        return false;
+    }
+    memcpy(storage, value, length + 1U);
+    *target = empty_is_null && length == 0U ? NULL : storage;
+    return true;
+}
+
+static void normalize_config_key(char *key)
+{
+    while (*key != '\0') {
+        if (*key == '-') {
+            *key = '_';
+        } else {
+            *key = (char)tolower((unsigned char)*key);
+        }
+        ++key;
+    }
+}
+
+static bool apply_config_option(options_t *opt,
+                                char *key,
+                                const char *value,
+                                bool *have_freq,
+                                bool *have_sr,
+                                bool *have_pol,
+                                bool *have_sid)
+{
+    uint32_t number;
+    bool flag;
+
+    normalize_config_key(key);
+    if (strcmp(key, "device") == 0 || strcmp(key, "device_ip") == 0) {
+        return store_config_text(opt->text.device_ip,
+                                 sizeof(opt->text.device_ip), value,
+                                 &opt->device_ip, true);
+    }
+    if (strcmp(key, "control_port") == 0) {
+        return parse_port(value, &opt->control_port);
+    }
+    if (strcmp(key, "stream_port") == 0) {
+        return parse_port(value, &opt->stream_port);
+    }
+    if (strcmp(key, "vlc_ip") == 0) {
+        return store_config_text(opt->text.vlc_ip,
+                                 sizeof(opt->text.vlc_ip), value,
+                                 &opt->vlc_ip, false);
+    }
+    if (strcmp(key, "vlc_port") == 0) {
+        return parse_port(value, &opt->vlc_port);
+    }
+    if (strcmp(key, "server") == 0 || strcmp(key, "http_server") == 0) {
+        if (!parse_bool_value(value, &flag)) {
+            return false;
+        }
+        opt->http_server = flag;
+        if (flag) {
+            opt->tune_mode = TUNE_NONE;
+        }
+        return true;
+    }
+    if (strcmp(key, "channels") == 0 || strcmp(key, "channels_path") == 0) {
+        return store_config_text(opt->text.channels_path,
+                                 sizeof(opt->text.channels_path), value,
+                                 &opt->channels_path, false);
+    }
+    if (strcmp(key, "http_bind") == 0 || strcmp(key, "http_bind_ip") == 0) {
+        return store_config_text(opt->text.http_bind_ip,
+                                 sizeof(opt->text.http_bind_ip), value,
+                                 &opt->http_bind_ip, false);
+    }
+    if (strcmp(key, "http_port") == 0) {
+        return parse_port(value, &opt->http_port);
+    }
+    if (strcmp(key, "max_clients") == 0) {
+        return parse_u32(value, &opt->max_http_clients) &&
+               opt->max_http_clients > 0U &&
+               opt->max_http_clients <= HTTP_CLIENT_LIMIT;
+    }
+    if (strcmp(key, "http_user") == 0) {
+        return store_config_text(opt->text.http_user,
+                                 sizeof(opt->text.http_user), value,
+                                 &opt->http_user, true);
+    }
+    if (strcmp(key, "http_password") == 0) {
+        return store_config_text(opt->text.http_password,
+                                 sizeof(opt->text.http_password), value,
+                                 &opt->http_password, true);
+    }
+    if (strcmp(key, "admin_user") == 0) {
+        return store_config_text(opt->text.admin_user,
+                                 sizeof(opt->text.admin_user), value,
+                                 &opt->admin_user, true);
+    }
+    if (strcmp(key, "admin_password") == 0) {
+        return store_config_text(opt->text.admin_password,
+                                 sizeof(opt->text.admin_password), value,
+                                 &opt->admin_password, true);
+    }
+    if (strcmp(key, "webui") == 0 || strcmp(key, "web_ui") == 0) {
+        return parse_bool_value(value, &opt->web_ui);
+    }
+    if (strcmp(key, "web_root") == 0 || strcmp(key, "webroot") == 0) {
+        return store_config_text(opt->text.web_root,
+                                 sizeof(opt->text.web_root), value,
+                                 &opt->web_root, false);
+    }
+    if (strcmp(key, "epg") == 0 || strcmp(key, "epg_path") == 0 ||
+        strcmp(key, "xmltv") == 0) {
+        return store_config_text(opt->text.epg_path,
+                                 sizeof(opt->text.epg_path), value,
+                                 &opt->epg_path, true);
+    }
+    if (strcmp(key, "epg_update") == 0 ||
+        strcmp(key, "epg_update_on_start") == 0 ||
+        strcmp(key, "epg_download") == 0) {
+        return parse_bool_value(value, &opt->epg_update);
+    }
+    if (strcmp(key, "epg_url") == 0 || strcmp(key, "xmltv_url") == 0) {
+        return store_config_text(opt->text.epg_url,
+                                 sizeof(opt->text.epg_url), value,
+                                 &opt->epg_url, true);
+    }
+    if (strcmp(key, "epg_update_timeout_ms") == 0 ||
+        strcmp(key, "epg_download_timeout_ms") == 0) {
+        return parse_u32(value, &number) && number >= 1000U &&
+               number <= 120000U &&
+               (opt->epg_update_timeout_ms = (int)number, true);
+    }
+    if (strcmp(key, "device_channels_update") == 0 ||
+        strcmp(key, "native_channels_update") == 0) {
+        return parse_bool_value(value, &opt->device_channels_update);
+    }
+    if (strcmp(key, "device_epg_update") == 0 ||
+        strcmp(key, "native_epg_update") == 0) {
+        return parse_bool_value(value, &opt->device_epg_update);
+    }
+    if (strcmp(key, "device_channels_refresh_minutes") == 0) {
+        return parse_u32(value, &opt->device_channels_refresh_minutes) &&
+               opt->device_channels_refresh_minutes <= 10080U;
+    }
+    if (strcmp(key, "device_epg_refresh_minutes") == 0) {
+        return parse_u32(value, &opt->device_epg_refresh_minutes) &&
+               opt->device_epg_refresh_minutes <= 10080U;
+    }
+    if (strcmp(key, "device_scan_refresh_minutes") == 0) {
+        return parse_u32(value, &opt->device_scan_refresh_minutes) &&
+               opt->device_scan_refresh_minutes <= 10080U;
+    }
+    if (strcmp(key, "device_scan_timeout_minutes") == 0) {
+        return parse_u32(value, &opt->device_scan_timeout_minutes) &&
+               opt->device_scan_timeout_minutes >= 1U &&
+               opt->device_scan_timeout_minutes <= 120U;
+    }
+    if (strcmp(key, "device_scan_search_range") == 0) {
+        return parse_u32(value, &opt->device_scan_search_range) &&
+               opt->device_scan_search_range <= 7U;
+    }
+    if (strcmp(key, "device_scan_order_by") == 0) {
+        return parse_u32(value, &opt->device_scan_order_by) &&
+               opt->device_scan_order_by <= 3U;
+    }
+    if (strcmp(key, "device_scan_network") == 0) {
+        return parse_bool_value(value, &opt->device_scan_network);
+    }
+    if (strcmp(key, "device_scan_epg_after") == 0) {
+        return parse_bool_value(value, &opt->device_scan_epg_after);
+    }
+    if (strcmp(key, "device_update_on_start") == 0) {
+        return parse_bool_value(value, &opt->device_update_on_start);
+    }
+    if (strcmp(key, "tls_cert") == 0 || strcmp(key, "tls_cert_path") == 0) {
+        return store_config_text(opt->text.tls_cert_path,
+                                 sizeof(opt->text.tls_cert_path), value,
+                                 &opt->tls_cert_path, true);
+    }
+    if (strcmp(key, "tls_key") == 0 || strcmp(key, "tls_key_path") == 0) {
+        return store_config_text(opt->text.tls_key_path,
+                                 sizeof(opt->text.tls_key_path), value,
+                                 &opt->tls_key_path, true);
+    }
+    if (strcmp(key, "progidx") == 0 || strcmp(key, "program_index") == 0) {
+        if (!parse_u32(value, &number) || number > INT32_MAX) {
+            return false;
+        }
+        opt->program_index = (int)number;
+        opt->tune_mode = TUNE_PROGIDX;
+        return true;
+    }
+    if (strcmp(key, "freq") == 0 || strcmp(key, "frequency_mhz") == 0) {
+        if (!parse_u32(value, &opt->frequency_mhz)) {
+            return false;
+        }
+        *have_freq = true;
+        return true;
+    }
+    if (strcmp(key, "sr") == 0 || strcmp(key, "symbol_rate_ks") == 0) {
+        if (!parse_u32(value, &opt->symbol_rate_ks)) {
+            return false;
+        }
+        *have_sr = true;
+        return true;
+    }
+    if (strcmp(key, "pol") == 0 || strcmp(key, "polarization") == 0) {
+        if (!parse_polarization(value, &opt->polarization)) {
+            return false;
+        }
+        *have_pol = true;
+        return true;
+    }
+    if (strcmp(key, "sid") == 0 || strcmp(key, "service_id") == 0) {
+        if (!parse_u32(value, &opt->service_id)) {
+            return false;
+        }
+        *have_sid = true;
+        return true;
+    }
+    if (strcmp(key, "orbital") == 0 || strcmp(key, "orbital_tenths") == 0) {
+        return parse_u32(value, &opt->orbital_tenths) &&
+               opt->orbital_tenths <= 32767U;
+    }
+    if (strcmp(key, "west") == 0) {
+        return parse_bool_value(value, &opt->west);
+    }
+    if (strcmp(key, "tone") == 0) {
+        if (strcmp(value, "auto") == 0) {
+            opt->tone = TONE_AUTO;
+        } else if (strcmp(value, "on") == 0) {
+            opt->tone = TONE_ON;
+        } else if (strcmp(value, "off") == 0) {
+            opt->tone = TONE_OFF;
+        } else {
+            return false;
+        }
+        return true;
+    }
+    if (strcmp(key, "lnb_low") == 0 || strcmp(key, "lnb_low_mhz") == 0) {
+        return parse_u32(value, &opt->lnb_low_mhz) &&
+               opt->lnb_low_mhz <= 65535U;
+    }
+    if (strcmp(key, "lnb_high") == 0 || strcmp(key, "lnb_high_mhz") == 0) {
+        return parse_u32(value, &opt->lnb_high_mhz) &&
+               opt->lnb_high_mhz <= 65535U;
+    }
+    if (strcmp(key, "lnb_switch") == 0 || strcmp(key, "lnb_switch_mhz") == 0) {
+        return parse_u32(value, &opt->lnb_switch_mhz) &&
+               opt->lnb_switch_mhz <= 65535U;
+    }
+    if (strcmp(key, "diseqc") == 0 || strcmp(key, "diseqc_port") == 0) {
+        return parse_u32(value, &opt->diseqc_port) && opt->diseqc_port <= 255U;
+    }
+    if (strcmp(key, "sat_setup") == 0 || strcmp(key, "satellite_setup") == 0) {
+        return parse_bool_value(value, &opt->satellite_setup);
+    }
+    if (strcmp(key, "even_key") == 0) {
+        if (!parse_hex_key(value, opt->even_key)) {
+            return false;
+        }
+        opt->have_even_key = true;
+        return true;
+    }
+    if (strcmp(key, "odd_key") == 0) {
+        if (!parse_hex_key(value, opt->odd_key)) {
+            return false;
+        }
+        opt->have_odd_key = true;
+        return true;
+    }
+    if (strcmp(key, "use_default_key") == 0) {
+        if (!parse_bool_value(value, &flag)) {
+            return false;
+        }
+        if (flag) {
+            memcpy(opt->even_key, device_default_key, sizeof(opt->even_key));
+            opt->have_even_key = true;
+        } else {
+            memset(opt->even_key, 0, sizeof(opt->even_key));
+            opt->have_even_key = false;
+        }
+        return true;
+    }
+    if (strcmp(key, "missing_key") == 0) {
+        if (strcmp(value, "pass") == 0) {
+            opt->missing_key_policy = MISSING_KEY_PASS;
+        } else if (strcmp(value, "drop") == 0) {
+            opt->missing_key_policy = MISSING_KEY_DROP;
+        } else {
+            return false;
+        }
+        return true;
+    }
+    if (strcmp(key, "dump") == 0 || strcmp(key, "dump_path") == 0) {
+        return store_config_text(opt->text.dump_path,
+                                 sizeof(opt->text.dump_path), value,
+                                 &opt->dump_path, true);
+    }
+    if (strcmp(key, "wait_ms") == 0) {
+        return parse_u32(value, &number) && number <= 60000U &&
+               (opt->wait_ms = (int)number, true);
+    }
+    if (strcmp(key, "timeout_ms") == 0) {
+        return parse_u32(value, &number) && number >= 100U &&
+               number <= 60000U && (opt->timeout_ms = (int)number, true);
+    }
+    if (strcmp(key, "probe") == 0) {
+        if (!parse_bool_value(value, &opt->probe_only)) {
+            return false;
+        }
+        if (opt->probe_only) {
+            opt->tune_mode = TUNE_NONE;
+        }
+        return true;
+    }
+    if (strcmp(key, "verbose") == 0) {
+        return parse_bool_value(value, &opt->verbose);
+    }
+    return false;
+}
+
+static bool load_config_file(options_t *opt,
+                             const char *path,
+                             bool *have_freq,
+                             bool *have_sr,
+                             bool *have_pol,
+                             bool *have_sid)
+{
+    FILE *file = fopen(path, "rb");
+    char line[4096];
+    unsigned line_number = 0;
+
+    if (file == NULL) {
+        fprintf(stderr, "Cannot open config file '%s': %s\n", path,
+                strerror(errno));
+        return false;
+    }
+    while (fgets(line, sizeof(line), file) != NULL) {
+        char *text;
+        char *equals;
+        char *key;
+        char *value;
+        size_t length;
+        ++line_number;
+        length = strlen(line);
+        if (length > 0U && line[length - 1U] != '\n' && !feof(file)) {
+            fprintf(stderr, "Config line %u is too long.\n", line_number);
+            fclose(file);
+            return false;
+        }
+        text = trim_config_text(line);
+        if (*text == '\0' || *text == '#' || *text == ';' || *text == '[') {
+            continue;
+        }
+        equals = strchr(text, '=');
+        if (equals == NULL) {
+            fprintf(stderr, "Config line %u must use key=value syntax.\n",
+                    line_number);
+            fclose(file);
+            return false;
+        }
+        *equals = '\0';
+        key = trim_config_text(text);
+        value = trim_config_text(equals + 1);
+        length = strlen(value);
+        if (length >= 2U &&
+            ((value[0] == '"' && value[length - 1U] == '"') ||
+             (value[0] == '\'' && value[length - 1U] == '\''))) {
+            value[length - 1U] = '\0';
+            ++value;
+        }
+        if (*key == '\0' || !apply_config_option(opt, key, value,
+                                                  have_freq, have_sr,
+                                                  have_pol, have_sid)) {
+            fprintf(stderr, "Invalid or unsupported config option on line %u.\n",
+                    line_number);
+            fclose(file);
+            return false;
+        }
+    }
+    if (ferror(file)) {
+        fprintf(stderr, "Error reading config file '%s'.\n", path);
+        fclose(file);
+        return false;
+    }
+    fclose(file);
+    return true;
+}
+
+static bool set_program_relative_path(char *storage,
+                                      size_t storage_capacity,
+                                      const char *program,
+                                      const char *leaf,
+                                      const char **target)
+{
+    const char *slash = strrchr(program, '/');
+#ifdef _WIN32
+    const char *backslash = strrchr(program, '\\');
+    if (backslash != NULL && (slash == NULL || backslash > slash)) {
+        slash = backslash;
+    }
+#endif
+    if (slash == NULL) {
+        return store_config_text(storage, storage_capacity, leaf, target, false);
+    }
+    {
+        const size_t directory_length = (size_t)(slash - program + 1);
+        const size_t leaf_length = strlen(leaf);
+        if (directory_length + leaf_length + 1U > storage_capacity) {
+            return false;
+        }
+        memcpy(storage, program, directory_length);
+        memcpy(storage + directory_length, leaf, leaf_length + 1U);
+        *target = storage;
+        return true;
+    }
+}
+
 static bool parse_options(int argc, char **argv, options_t *opt)
 {
     int i;
+    const char *config_path = NULL;
     bool have_freq = false;
     bool have_sr = false;
     bool have_pol = false;
     bool have_sid = false;
+
+    for (i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
+            print_usage(argv[0]);
+            exit(EXIT_SUCCESS);
+        }
+        if (strcmp(argv[i], "--config") == 0) {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "--config requires a file path.\n");
+                return false;
+            }
+            config_path = argv[++i];
+        }
+    }
 
     memset(opt, 0, sizeof(*opt));
     opt->control_port = DEFAULT_CONTROL_PORT;
@@ -372,11 +991,38 @@ static bool parse_options(int argc, char **argv, options_t *opt)
     opt->missing_key_policy = MISSING_KEY_PASS;
     opt->wait_ms = 800;
     opt->timeout_ms = 3000;
+    opt->epg_update_timeout_ms = 30000;
+    opt->device_channels_refresh_minutes = 1440U;
+    opt->device_epg_refresh_minutes = 240U;
+    opt->device_scan_refresh_minutes = 0U;
+    opt->device_scan_timeout_minutes = 30U;
+    opt->device_scan_search_range = 0U;
+    opt->device_scan_order_by = 0U;
+    opt->device_scan_network = true;
+    opt->device_scan_epg_after = true;
+    opt->device_update_on_start = true;
     opt->program_index = -1;
     opt->channels_path = "channels.xml";
     opt->http_bind_ip = "127.0.0.1";
     opt->http_port = 8080;
     opt->max_http_clients = 8;
+    opt->web_ui = true;
+    opt->config_path = config_path;
+    if (!set_program_relative_path(opt->text.web_root,
+                                   sizeof(opt->text.web_root), argv[0],
+                                   "web", &opt->web_root) ||
+        !set_program_relative_path(opt->text.epg_path,
+                                   sizeof(opt->text.epg_path), argv[0],
+                                   "epg.xml", &opt->epg_path)) {
+        fprintf(stderr, "Program path is too long.\n");
+        return false;
+    }
+
+    if (config_path != NULL &&
+        !load_config_file(opt, config_path, &have_freq, &have_sr,
+                          &have_pol, &have_sid)) {
+        return false;
+    }
 
     for (i = 1; i < argc; ++i) {
         const char *arg = argv[i];
@@ -384,6 +1030,8 @@ static bool parse_options(int argc, char **argv, options_t *opt)
         if (strcmp(arg, "--help") == 0 || strcmp(arg, "-h") == 0) {
             print_usage(argv[0]);
             exit(EXIT_SUCCESS);
+        } else if (strcmp(arg, "--config") == 0 && i + 1 < argc) {
+            ++i;
         } else if (strcmp(arg, "--self-test") == 0) {
             opt->self_test = true;
         } else if (strcmp(arg, "--device") == 0 && i + 1 < argc) {
@@ -423,6 +1071,89 @@ static bool parse_options(int argc, char **argv, options_t *opt)
             opt->http_user = argv[++i];
         } else if (strcmp(arg, "--http-password") == 0 && i + 1 < argc) {
             opt->http_password = argv[++i];
+        } else if (strcmp(arg, "--admin-user") == 0 && i + 1 < argc) {
+            opt->admin_user = argv[++i];
+        } else if (strcmp(arg, "--admin-password") == 0 && i + 1 < argc) {
+            opt->admin_password = argv[++i];
+        } else if (strcmp(arg, "--webui") == 0) {
+            opt->web_ui = true;
+        } else if (strcmp(arg, "--no-webui") == 0) {
+            opt->web_ui = false;
+        } else if (strcmp(arg, "--web-root") == 0 && i + 1 < argc) {
+            opt->web_root = argv[++i];
+        } else if (strcmp(arg, "--epg") == 0 && i + 1 < argc) {
+            opt->epg_path = argv[++i];
+        } else if (strcmp(arg, "--epg-update") == 0) {
+            opt->epg_update = true;
+        } else if (strcmp(arg, "--no-epg-update") == 0) {
+            opt->epg_update = false;
+        } else if (strcmp(arg, "--epg-url") == 0 && i + 1 < argc) {
+            opt->epg_url = argv[++i];
+        } else if (strcmp(arg, "--epg-update-timeout-ms") == 0 && i + 1 < argc) {
+            uint32_t value;
+            if (!parse_u32(argv[++i], &value) || value < 1000U ||
+                value > 120000U) {
+                fprintf(stderr, "Invalid --epg-update-timeout-ms value.\n");
+                return false;
+            }
+            opt->epg_update_timeout_ms = (int)value;
+        } else if (strcmp(arg, "--device-channels-update") == 0) {
+            opt->device_channels_update = true;
+        } else if (strcmp(arg, "--no-device-channels-update") == 0) {
+            opt->device_channels_update = false;
+        } else if (strcmp(arg, "--device-epg-update") == 0) {
+            opt->device_epg_update = true;
+        } else if (strcmp(arg, "--no-device-epg-update") == 0) {
+            opt->device_epg_update = false;
+        } else if (strcmp(arg, "--device-channels-refresh-minutes") == 0 && i + 1 < argc) {
+            if (!parse_u32(argv[++i], &opt->device_channels_refresh_minutes) ||
+                opt->device_channels_refresh_minutes > 10080U) {
+                fprintf(stderr, "Invalid --device-channels-refresh-minutes value.\n");
+                return false;
+            }
+        } else if (strcmp(arg, "--device-epg-refresh-minutes") == 0 && i + 1 < argc) {
+            if (!parse_u32(argv[++i], &opt->device_epg_refresh_minutes) ||
+                opt->device_epg_refresh_minutes > 10080U) {
+                fprintf(stderr, "Invalid --device-epg-refresh-minutes value.\n");
+                return false;
+            }
+        } else if (strcmp(arg, "--device-scan-refresh-minutes") == 0 && i + 1 < argc) {
+            if (!parse_u32(argv[++i], &opt->device_scan_refresh_minutes) ||
+                opt->device_scan_refresh_minutes > 10080U) {
+                fprintf(stderr, "Invalid --device-scan-refresh-minutes value.\n");
+                return false;
+            }
+        } else if (strcmp(arg, "--device-scan-timeout-minutes") == 0 && i + 1 < argc) {
+            if (!parse_u32(argv[++i], &opt->device_scan_timeout_minutes) ||
+                opt->device_scan_timeout_minutes < 1U ||
+                opt->device_scan_timeout_minutes > 120U) {
+                fprintf(stderr, "Invalid --device-scan-timeout-minutes value.\n");
+                return false;
+            }
+        } else if (strcmp(arg, "--device-scan-search-range") == 0 && i + 1 < argc) {
+            if (!parse_u32(argv[++i], &opt->device_scan_search_range) ||
+                opt->device_scan_search_range > 7U) {
+                fprintf(stderr, "Invalid --device-scan-search-range value.\n");
+                return false;
+            }
+        } else if (strcmp(arg, "--device-scan-order-by") == 0 && i + 1 < argc) {
+            if (!parse_u32(argv[++i], &opt->device_scan_order_by) ||
+                opt->device_scan_order_by > 3U) {
+                fprintf(stderr, "Invalid --device-scan-order-by value.\n");
+                return false;
+            }
+        } else if (strcmp(arg, "--device-scan-network") == 0) {
+            opt->device_scan_network = true;
+        } else if (strcmp(arg, "--no-device-scan-network") == 0) {
+            opt->device_scan_network = false;
+        } else if (strcmp(arg, "--device-scan-epg-after") == 0) {
+            opt->device_scan_epg_after = true;
+        } else if (strcmp(arg, "--no-device-scan-epg-after") == 0) {
+            opt->device_scan_epg_after = false;
+        } else if (strcmp(arg, "--device-update-on-start") == 0) {
+            opt->device_update_on_start = true;
+        } else if (strcmp(arg, "--no-device-update-on-start") == 0) {
+            opt->device_update_on_start = false;
         } else if (strcmp(arg, "--tls-cert") == 0 && i + 1 < argc) {
             opt->tls_cert_path = argv[++i];
         } else if (strcmp(arg, "--tls-key") == 0 && i + 1 < argc) {
@@ -573,11 +1304,20 @@ static bool parse_options(int argc, char **argv, options_t *opt)
         return true;
     }
     if (opt->device_ip == NULL) {
-        fprintf(stderr, "--device is required.\n");
+        fprintf(stderr, "--device is required (or set device= in the config file).\n");
         return false;
     }
     if ((opt->http_user == NULL) != (opt->http_password == NULL)) {
         fprintf(stderr, "--http-user and --http-password must be used together.\n");
+        return false;
+    }
+    if ((opt->admin_user == NULL) != (opt->admin_password == NULL)) {
+        fprintf(stderr, "--admin-user and --admin-password must be used together.\n");
+        return false;
+    }
+    if (opt->epg_update &&
+        (opt->epg_url == NULL || *opt->epg_url == '\0')) {
+        fprintf(stderr, "EPG startup update is enabled, but no epg_url/--epg-url was supplied.\n");
         return false;
     }
     if ((opt->tls_cert_path == NULL) != (opt->tls_key_path == NULL)) {
@@ -767,10 +1507,20 @@ static void build_satellite_config(uint8_t frame[FRAME_SIZE],
     frame[23] = build_satellite_flags('O', opt->tone);
 }
 
+static tone_mode_t resolve_tone_mode(const options_t *opt)
+{
+    if (opt->tone != TONE_AUTO) return opt->tone;
+    if (opt->lnb_switch_mhz == 0U || opt->frequency_mhz == 0U)
+        return TONE_AUTO;
+    return opt->frequency_mhz >= opt->lnb_switch_mhz
+        ? TONE_ON : TONE_OFF;
+}
+
 static void build_dvbs_tune(uint8_t frame[FRAME_SIZE], const options_t *opt)
 {
+    const tone_mode_t tone = resolve_tone_mode(opt);
     build_frame(frame, 32, 0xF6, 1);
-    frame[21] = build_satellite_flags(opt->polarization, opt->tone);
+    frame[21] = build_satellite_flags(opt->polarization, tone);
     put_orbital(&frame[22], opt->orbital_tenths, opt->west);
     put_u16_be(&frame[24], opt->symbol_rate_ks);
     put_u24_be(&frame[26], opt->frequency_mhz);
@@ -1101,6 +1851,11 @@ static bool send_all(socket_t sock, const uint8_t *data, size_t length)
 {
     size_t sent = 0;
 
+    if (sock == SOCKET_INVALID) {
+        fprintf(stderr, "TCP control socket is not connected.\n");
+        return false;
+    }
+
     while (sent < length) {
         const size_t remaining = length - sent;
         const int request_length =
@@ -1121,6 +1876,11 @@ static bool recv_all(socket_t sock, uint8_t *data, size_t length)
 {
     size_t received = 0;
 
+    if (sock == SOCKET_INVALID) {
+        fprintf(stderr, "TCP control socket is not connected.\n");
+        return false;
+    }
+
     while (received < length) {
         const size_t remaining = length - received;
         const int request_length =
@@ -1140,6 +1900,678 @@ static bool recv_all(socket_t sock, uint8_t *data, size_t length)
     }
 
     return true;
+}
+
+
+typedef struct {
+    bool https;
+    char host[512];
+    uint16_t port;
+    char path[2048];
+} download_url_t;
+
+typedef struct {
+    uint8_t *data;
+    size_t length;
+    size_t capacity;
+} download_buffer_t;
+
+static void download_buffer_free(download_buffer_t *buffer)
+{
+    if (buffer != NULL) {
+        free(buffer->data);
+        memset(buffer, 0, sizeof(*buffer));
+    }
+}
+
+static bool download_buffer_append(download_buffer_t *buffer,
+                                   const uint8_t *data,
+                                   size_t length)
+{
+    const size_t maximum = XML_FILE_LIMIT + HTTP_DOWNLOAD_HEADER_LIMIT;
+    size_t required;
+    size_t capacity;
+    uint8_t *replacement;
+
+    if (length == 0U) {
+        return true;
+    }
+    if (buffer->length > maximum || length > maximum - buffer->length) {
+        fprintf(stderr, "EPG download exceeds the %u MiB limit.\n",
+                (unsigned)(XML_FILE_LIMIT / (1024U * 1024U)));
+        return false;
+    }
+    required = buffer->length + length;
+    if (required <= buffer->capacity) {
+        memcpy(buffer->data + buffer->length, data, length);
+        buffer->length = required;
+        return true;
+    }
+    capacity = buffer->capacity == 0U ? 65536U : buffer->capacity;
+    while (capacity < required) {
+        if (capacity > maximum / 2U) {
+            capacity = maximum;
+            break;
+        }
+        capacity *= 2U;
+    }
+    replacement = (uint8_t *)realloc(buffer->data, capacity);
+    if (replacement == NULL) {
+        fprintf(stderr, "Out of memory while downloading EPG data.\n");
+        return false;
+    }
+    buffer->data = replacement;
+    buffer->capacity = capacity;
+    memcpy(buffer->data + buffer->length, data, length);
+    buffer->length = required;
+    return true;
+}
+
+static bool parse_download_url(const char *url, download_url_t *parsed)
+{
+    const char *cursor;
+    const char *authority_end;
+    const char *host_start;
+    const char *host_end;
+    const char *port_text = NULL;
+    size_t host_length;
+    size_t path_length;
+    uint16_t default_port;
+
+    if (url == NULL || parsed == NULL) {
+        return false;
+    }
+    memset(parsed, 0, sizeof(*parsed));
+    if (STRNCASECMP(url, "http://", 7) == 0) {
+        parsed->https = false;
+        cursor = url + 7;
+        default_port = 80;
+    } else if (STRNCASECMP(url, "https://", 8) == 0) {
+        parsed->https = true;
+        cursor = url + 8;
+        default_port = 443;
+    } else {
+        fprintf(stderr, "EPG URL must begin with http:// or https://.\n");
+        return false;
+    }
+
+    authority_end = cursor + strcspn(cursor, "/?#");
+    if (authority_end == cursor) {
+        fprintf(stderr, "EPG URL has no host name.\n");
+        return false;
+    }
+    if (memchr(cursor, '@', (size_t)(authority_end - cursor)) != NULL) {
+        fprintf(stderr, "EPG URLs containing user information are not supported.\n");
+        return false;
+    }
+
+    host_start = cursor;
+    host_end = authority_end;
+    if (*host_start == '[') {
+        const char *closing = memchr(host_start, ']',
+                                     (size_t)(authority_end - host_start));
+        if (closing == NULL) {
+            fprintf(stderr, "Malformed IPv6 host in EPG URL.\n");
+            return false;
+        }
+        host_start++;
+        host_end = closing;
+        if (closing + 1 < authority_end) {
+            if (closing[1] != ':') {
+                return false;
+            }
+            port_text = closing + 2;
+        }
+    } else {
+        const char *colon = NULL;
+        const char *scan;
+        for (scan = cursor; scan < authority_end; ++scan) {
+            if (*scan == ':') {
+                colon = scan;
+            }
+        }
+        if (colon != NULL) {
+            host_end = colon;
+            port_text = colon + 1;
+        }
+    }
+
+    host_length = (size_t)(host_end - host_start);
+    if (host_length == 0U || host_length >= sizeof(parsed->host)) {
+        fprintf(stderr, "EPG URL host is empty or too long.\n");
+        return false;
+    }
+    memcpy(parsed->host, host_start, host_length);
+    parsed->host[host_length] = '\0';
+    parsed->port = default_port;
+    if (port_text != NULL) {
+        char port_buffer[16];
+        size_t port_length = (size_t)(authority_end - port_text);
+        if (port_length == 0U || port_length >= sizeof(port_buffer)) {
+            return false;
+        }
+        memcpy(port_buffer, port_text, port_length);
+        port_buffer[port_length] = '\0';
+        if (!parse_port(port_buffer, &parsed->port)) {
+            fprintf(stderr, "Invalid port in EPG URL.\n");
+            return false;
+        }
+    }
+
+    cursor = authority_end;
+    if (*cursor == '\0' || *cursor == '#') {
+        snprintf(parsed->path, sizeof(parsed->path), "/");
+        return true;
+    }
+    if (*cursor == '?') {
+        if (snprintf(parsed->path, sizeof(parsed->path), "/%s", cursor) < 0 ||
+            strlen(parsed->path) >= sizeof(parsed->path) - 1U) {
+            return false;
+        }
+    } else {
+        const char *fragment = strchr(cursor, '#');
+        path_length = fragment != NULL ? (size_t)(fragment - cursor) : strlen(cursor);
+        if (path_length == 0U || path_length >= sizeof(parsed->path)) {
+            return false;
+        }
+        memcpy(parsed->path, cursor, path_length);
+        parsed->path[path_length] = '\0';
+    }
+    return true;
+}
+
+static bool find_http_header_end(const uint8_t *data,
+                                 size_t length,
+                                 size_t *header_length)
+{
+    size_t i;
+    for (i = 3U; i < length; ++i) {
+        if (data[i - 3U] == '\r' && data[i - 2U] == '\n' &&
+            data[i - 1U] == '\r' && data[i] == '\n') {
+            *header_length = i + 1U;
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool http_header_value(const uint8_t *headers,
+                              size_t header_length,
+                              const char *name,
+                              char *output,
+                              size_t output_capacity)
+{
+    const size_t name_length = strlen(name);
+    size_t position = 0U;
+
+    if (output_capacity == 0U) {
+        return false;
+    }
+    output[0] = '\0';
+    while (position < header_length) {
+        size_t line_end = position;
+        size_t value_start;
+        size_t value_end;
+        while (line_end + 1U < header_length &&
+               !(headers[line_end] == '\r' && headers[line_end + 1U] == '\n')) {
+            ++line_end;
+        }
+        if (line_end == position) {
+            break;
+        }
+        if (line_end > position + name_length &&
+            STRNCASECMP((const char *)headers + position, name, name_length) == 0 &&
+            headers[position + name_length] == ':') {
+            value_start = position + name_length + 1U;
+            while (value_start < line_end &&
+                   (headers[value_start] == ' ' || headers[value_start] == '\t')) {
+                ++value_start;
+            }
+            value_end = line_end;
+            while (value_end > value_start &&
+                   (headers[value_end - 1U] == ' ' || headers[value_end - 1U] == '\t')) {
+                --value_end;
+            }
+            if (value_end - value_start >= output_capacity) {
+                return false;
+            }
+            memcpy(output, headers + value_start, value_end - value_start);
+            output[value_end - value_start] = '\0';
+            return true;
+        }
+        position = line_end + 2U;
+    }
+    return false;
+}
+
+static bool decode_chunked_body(const uint8_t *input,
+                                size_t input_length,
+                                uint8_t **output,
+                                size_t *output_length)
+{
+    download_buffer_t decoded;
+    size_t position = 0U;
+
+    memset(&decoded, 0, sizeof(decoded));
+    while (position < input_length) {
+        size_t line_end = position;
+        char size_text[32];
+        char *end = NULL;
+        unsigned long chunk_size;
+        size_t text_length;
+
+        while (line_end + 1U < input_length &&
+               !(input[line_end] == '\r' && input[line_end + 1U] == '\n')) {
+            ++line_end;
+        }
+        if (line_end + 1U >= input_length) {
+            download_buffer_free(&decoded);
+            return false;
+        }
+        text_length = line_end - position;
+        if (text_length == 0U || text_length >= sizeof(size_text)) {
+            download_buffer_free(&decoded);
+            return false;
+        }
+        memcpy(size_text, input + position, text_length);
+        size_text[text_length] = '\0';
+        if (strchr(size_text, ';') != NULL) {
+            *strchr(size_text, ';') = '\0';
+        }
+        errno = 0;
+        chunk_size = strtoul(size_text, &end, 16);
+        if (errno != 0 || end == size_text || *end != '\0' ||
+            chunk_size > XML_FILE_LIMIT) {
+            download_buffer_free(&decoded);
+            return false;
+        }
+        position = line_end + 2U;
+        if (chunk_size == 0U) {
+            *output = decoded.data;
+            *output_length = decoded.length;
+            return true;
+        }
+        if ((size_t)chunk_size > input_length - position ||
+            input_length - position - (size_t)chunk_size < 2U ||
+            input[position + chunk_size] != '\r' ||
+            input[position + chunk_size + 1U] != '\n' ||
+            !download_buffer_append(&decoded, input + position,
+                                    (size_t)chunk_size)) {
+            download_buffer_free(&decoded);
+            return false;
+        }
+        position += (size_t)chunk_size + 2U;
+    }
+    download_buffer_free(&decoded);
+    return false;
+}
+
+static bool resolve_download_redirect(const char *current_url,
+                                      const download_url_t *current,
+                                      const char *location,
+                                      char *output,
+                                      size_t output_capacity)
+{
+    const char *scheme = current->https ? "https" : "http";
+    bool default_port = current->port == (current->https ? 443U : 80U);
+    char host[600];
+
+    if (STRNCASECMP(location, "http://", 7) == 0 ||
+        STRNCASECMP(location, "https://", 8) == 0) {
+        return snprintf(output, output_capacity, "%s", location) >= 0 &&
+               strlen(location) < output_capacity;
+    }
+    if (location[0] == '/' && location[1] == '/') {
+        return snprintf(output, output_capacity, "%s:%s", scheme, location) >= 0 &&
+               strlen(output) < output_capacity;
+    }
+    if (strchr(current->host, ':') != NULL) {
+        snprintf(host, sizeof(host), "[%s]", current->host);
+    } else {
+        snprintf(host, sizeof(host), "%s", current->host);
+    }
+    if (location[0] == '/') {
+        if (default_port) {
+            return snprintf(output, output_capacity, "%s://%s%s",
+                            scheme, host, location) >= 0 &&
+                   strlen(output) < output_capacity;
+        }
+        return snprintf(output, output_capacity, "%s://%s:%u%s",
+                        scheme, host, (unsigned)current->port, location) >= 0 &&
+               strlen(output) < output_capacity;
+    }
+    (void)current_url;
+    fprintf(stderr, "Relative EPG redirect paths are not supported: %s\n", location);
+    return false;
+}
+
+static bool fetch_download_url_once(const char *url,
+                                    int timeout_ms,
+                                    uint8_t **body,
+                                    size_t *body_length,
+                                    char *redirect,
+                                    size_t redirect_capacity)
+{
+    download_url_t parsed;
+    download_buffer_t response;
+    socket_t sock = SOCKET_INVALID;
+    char request[4096];
+    char host_header[600];
+    uint8_t receive_buffer[32768];
+    size_t header_length = 0U;
+    int status_code = 0;
+    bool ok = false;
+#ifdef SORALINK_USE_OPENSSL
+    SSL_CTX *ssl_context = NULL;
+    SSL *ssl = NULL;
+#endif
+
+    *body = NULL;
+    *body_length = 0U;
+    if (redirect_capacity > 0U) {
+        redirect[0] = '\0';
+    }
+    memset(&response, 0, sizeof(response));
+    if (!parse_download_url(url, &parsed)) {
+        return false;
+    }
+#ifndef SORALINK_USE_OPENSSL
+    if (parsed.https) {
+        fprintf(stderr,
+                "HTTPS EPG updates require an OpenSSL build. Use make tls or an HTTP URL.\n");
+        return false;
+    }
+#endif
+
+    sock = connect_tcp(parsed.host, parsed.port, timeout_ms);
+    if (sock == SOCKET_INVALID) {
+        return false;
+    }
+
+#ifdef SORALINK_USE_OPENSSL
+    if (parsed.https) {
+        X509_VERIFY_PARAM *verify_param;
+        OPENSSL_init_ssl(0, NULL);
+        ssl_context = SSL_CTX_new(TLS_client_method());
+        if (ssl_context == NULL ||
+            SSL_CTX_set_default_verify_paths(ssl_context) != 1) {
+            fprintf(stderr, "Could not initialize trusted CA certificates for EPG HTTPS.\n");
+            goto cleanup;
+        }
+        SSL_CTX_set_min_proto_version(ssl_context, TLS1_2_VERSION);
+        SSL_CTX_set_verify(ssl_context, SSL_VERIFY_PEER, NULL);
+        ssl = SSL_new(ssl_context);
+        if (ssl == NULL) {
+            goto cleanup;
+        }
+        if (SSL_set_tlsext_host_name(ssl, parsed.host) != 1) {
+            goto cleanup;
+        }
+        verify_param = SSL_get0_param(ssl);
+        if (verify_param == NULL ||
+            X509_VERIFY_PARAM_set1_host(verify_param, parsed.host, 0) != 1 ||
+            SSL_set_fd(ssl, (int)sock) != 1 ||
+            SSL_connect(ssl) != 1) {
+            fprintf(stderr, "TLS connection to EPG host failed.\n");
+            goto cleanup;
+        }
+    }
+#endif
+
+    if (strchr(parsed.host, ':') != NULL) {
+        snprintf(host_header, sizeof(host_header), "[%s]", parsed.host);
+    } else {
+        snprintf(host_header, sizeof(host_header), "%s", parsed.host);
+    }
+    if (parsed.port != (parsed.https ? 443U : 80U)) {
+        const size_t used = strlen(host_header);
+        snprintf(host_header + used, sizeof(host_header) - used,
+                 ":%u", (unsigned)parsed.port);
+    }
+    if (snprintf(request, sizeof(request),
+                 "GET %s HTTP/1.1\r\n"
+                 "Host: %s\r\n"
+                 "User-Agent: SORALink-EPG/3.1\r\n"
+                 "Accept: application/xml,text/xml,*/*;q=0.5\r\n"
+                 "Accept-Encoding: identity\r\n"
+                 "Connection: close\r\n\r\n",
+                 parsed.path, host_header) < 0 || strlen(request) >= sizeof(request) - 1U) {
+        goto cleanup;
+    }
+
+#ifdef SORALINK_USE_OPENSSL
+    if (parsed.https) {
+        size_t sent = 0U;
+        while (sent < strlen(request)) {
+            const int result = SSL_write(ssl, request + sent,
+                                         (int)(strlen(request) - sent));
+            if (result <= 0) {
+                fprintf(stderr, "TLS send failed while downloading EPG.\n");
+                goto cleanup;
+            }
+            sent += (size_t)result;
+        }
+    } else
+#endif
+    if (!send_all(sock, (const uint8_t *)request, strlen(request))) {
+        goto cleanup;
+    }
+
+    for (;;) {
+        socket_io_t received;
+#ifdef SORALINK_USE_OPENSSL
+        if (parsed.https) {
+            received = (socket_io_t)SSL_read(ssl, receive_buffer,
+                                             (int)sizeof(receive_buffer));
+            if (received <= 0) {
+                const int ssl_error = SSL_get_error(ssl, (int)received);
+                if (ssl_error == SSL_ERROR_ZERO_RETURN) {
+                    break;
+                }
+                if (ssl_error == SSL_ERROR_WANT_READ ||
+                    ssl_error == SSL_ERROR_WANT_WRITE) {
+                    continue;
+                }
+                fprintf(stderr, "TLS receive failed while downloading EPG.\n");
+                goto cleanup;
+            }
+        } else
+#endif
+        {
+            received = socket_recv_bytes(sock, (char *)receive_buffer,
+                                         (int)sizeof(receive_buffer), 0);
+            if (received == 0) {
+                break;
+            }
+            if (received < 0) {
+                fprintf(stderr, "EPG download receive failed or timed out: %d\n",
+                        SOCKET_ERROR_CODE());
+                goto cleanup;
+            }
+        }
+        if (!download_buffer_append(&response, receive_buffer,
+                                    (size_t)received)) {
+            goto cleanup;
+        }
+    }
+
+    if (!find_http_header_end(response.data, response.length, &header_length) ||
+        header_length > HTTP_DOWNLOAD_HEADER_LIMIT ||
+        sscanf((const char *)response.data, "HTTP/%*u.%*u %d", &status_code) != 1) {
+        fprintf(stderr, "Invalid HTTP response while downloading EPG.\n");
+        goto cleanup;
+    }
+
+    if (status_code == 301 || status_code == 302 || status_code == 303 ||
+        status_code == 307 || status_code == 308) {
+        char location[2048];
+        if (!http_header_value(response.data, header_length, "Location",
+                               location, sizeof(location)) ||
+            !resolve_download_redirect(url, &parsed, location,
+                                       redirect, redirect_capacity)) {
+            fprintf(stderr, "EPG download redirect is invalid.\n");
+            goto cleanup;
+        }
+        ok = true;
+        goto cleanup;
+    }
+    if (status_code < 200 || status_code >= 300) {
+        fprintf(stderr, "EPG download returned HTTP status %d.\n", status_code);
+        goto cleanup;
+    }
+
+    {
+        const uint8_t *raw_body = response.data + header_length;
+        const size_t raw_length = response.length - header_length;
+        char transfer_encoding[128];
+        char content_encoding[128];
+
+        if (http_header_value(response.data, header_length, "Content-Encoding",
+                              content_encoding, sizeof(content_encoding)) &&
+            STRNCASECMP(content_encoding, "identity", 8) != 0) {
+            fprintf(stderr,
+                    "EPG server returned unsupported Content-Encoding '%s'. Configure an uncompressed XMLTV URL.\n",
+                    content_encoding);
+            goto cleanup;
+        }
+        if (http_header_value(response.data, header_length, "Transfer-Encoding",
+                              transfer_encoding, sizeof(transfer_encoding)) &&
+            STRNCASECMP(transfer_encoding, "chunked", 7) == 0) {
+            if (!decode_chunked_body(raw_body, raw_length, body, body_length)) {
+                fprintf(stderr, "Could not decode chunked EPG response.\n");
+                goto cleanup;
+            }
+        } else {
+            if (raw_length > XML_FILE_LIMIT) {
+                goto cleanup;
+            }
+            *body = (uint8_t *)malloc(raw_length + 1U);
+            if (*body == NULL) {
+                goto cleanup;
+            }
+            memcpy(*body, raw_body, raw_length);
+            (*body)[raw_length] = '\0';
+            *body_length = raw_length;
+        }
+    }
+    ok = true;
+
+cleanup:
+#ifdef SORALINK_USE_OPENSSL
+    if (ssl != NULL) {
+        SSL_shutdown(ssl);
+        SSL_free(ssl);
+    }
+    if (ssl_context != NULL) {
+        SSL_CTX_free(ssl_context);
+    }
+#endif
+    if (sock != SOCKET_INVALID) {
+        CLOSESOCKET(sock);
+    }
+    download_buffer_free(&response);
+    if (!ok) {
+        free(*body);
+        *body = NULL;
+        *body_length = 0U;
+    }
+    return ok;
+}
+
+static bool write_downloaded_epg(const char *path,
+                                 const uint8_t *body,
+                                 size_t body_length)
+{
+    char temporary[1200];
+    FILE *file;
+    size_t position = 0U;
+
+    while (position < body_length && isspace((unsigned char)body[position])) {
+        ++position;
+    }
+    if (body_length == 0U || position >= body_length || body[position] != '<') {
+        fprintf(stderr, "Downloaded EPG is not XML text.\n");
+        return false;
+    }
+    if (snprintf(temporary, sizeof(temporary), "%s.download", path) < 0 ||
+        strlen(temporary) >= sizeof(temporary) - 1U) {
+        return false;
+    }
+    file = fopen(temporary, "wb");
+    if (file == NULL) {
+        fprintf(stderr, "Cannot create temporary EPG file '%s': %s\n",
+                temporary, strerror(errno));
+        return false;
+    }
+    if (fwrite(body, 1, body_length, file) != body_length ||
+        fflush(file) != 0 || fclose(file) != 0) {
+        fprintf(stderr, "Could not write complete downloaded EPG file.\n");
+        remove(temporary);
+        return false;
+    }
+    remove(path);
+    if (rename(temporary, path) != 0) {
+        fprintf(stderr, "Could not install downloaded EPG file '%s': %s\n",
+                path, strerror(errno));
+        remove(temporary);
+        return false;
+    }
+    return true;
+}
+
+static bool update_epg_on_start(const options_t *opt)
+{
+    char current_url[4096];
+    unsigned redirect_count;
+
+    if (!opt->epg_update) {
+        return true;
+    }
+    if (opt->epg_path == NULL || *opt->epg_path == '\0' ||
+        opt->epg_url == NULL || *opt->epg_url == '\0') {
+        return false;
+    }
+    if (snprintf(current_url, sizeof(current_url), "%s", opt->epg_url) < 0 ||
+        strlen(opt->epg_url) >= sizeof(current_url)) {
+        fprintf(stderr, "EPG URL is too long.\n");
+        return false;
+    }
+
+    printf("Updating EPG before startup from %s ...\n", current_url);
+    for (redirect_count = 0U; redirect_count <= HTTP_REDIRECT_LIMIT;
+         ++redirect_count) {
+        uint8_t *body = NULL;
+        size_t body_length = 0U;
+        char redirect[4096];
+        bool fetched = fetch_download_url_once(current_url,
+                                               opt->epg_update_timeout_ms,
+                                               &body, &body_length,
+                                               redirect, sizeof(redirect));
+        if (!fetched) {
+            free(body);
+            fprintf(stderr,
+                    "EPG update failed; the existing local EPG file will be used if available.\n");
+            return false;
+        }
+        if (redirect[0] != '\0') {
+            free(body);
+            if (redirect_count == HTTP_REDIRECT_LIMIT) {
+                fprintf(stderr, "EPG download exceeded the redirect limit.\n");
+                return false;
+            }
+            snprintf(current_url, sizeof(current_url), "%s", redirect);
+            continue;
+        }
+        if (!write_downloaded_epg(opt->epg_path, body, body_length)) {
+            free(body);
+            return false;
+        }
+        free(body);
+        printf("EPG update complete: %zu bytes written to %s.\n",
+               body_length, opt->epg_path);
+        return true;
+    }
+    return false;
 }
 
 static bool validate_csw(const uint8_t *response,
@@ -1166,10 +2598,7 @@ static bool validate_csw(const uint8_t *response,
         fprintf(stderr, "Protocol error: device reported non-zero data residue.\n");
         return false;
     }
-    if (csw[12] != 0) {
-        fprintf(stderr, "Protocol error: command status 0x%02X.\n", csw[12]);
-        return false;
-    }
+
     return true;
 }
 
@@ -1201,6 +2630,62 @@ static bool tcp_command(socket_t sock,
     }
 
     return validate_csw(response, total, expected_data_length, frame);
+}
+
+static bool tcp_command_variable(socket_t sock,
+                                 const uint8_t frame[FRAME_SIZE],
+                                 size_t minimum_data_length,
+                                 size_t maximum_data_length,
+                                 uint8_t *response,
+                                 size_t response_capacity,
+                                 size_t *actual_data_length,
+                                 bool verbose)
+{
+    const size_t maximum_total = maximum_data_length + CSW_SIZE;
+    size_t received = 0U;
+
+    if (minimum_data_length > maximum_data_length ||
+        response_capacity < maximum_total || actual_data_length == NULL) {
+        fprintf(stderr, "Invalid variable TCP response parameters.\n");
+        return false;
+    }
+
+    if (verbose) hex_dump("TCP request", frame, FRAME_SIZE);
+    if (!send_all(sock, frame, FRAME_SIZE)) return false;
+
+    while (received < maximum_total) {
+        const size_t remaining = maximum_total - received;
+        const int request_length = remaining > (size_t)INT_MAX
+            ? INT_MAX : (int)remaining;
+        const socket_io_t result = socket_recv_bytes(
+            sock, (char *)response + received, request_length, 0);
+        size_t candidate;
+
+        if (result == 0) {
+            fprintf(stderr, "TCP connection closed by device.\n");
+            return false;
+        }
+        if (result < 0) {
+            fprintf(stderr, "TCP receive failed/timeout: %d\n",
+                    SOCKET_ERROR_CODE());
+            return false;
+        }
+        received += (size_t)result;
+
+        for (candidate = minimum_data_length;
+             candidate <= maximum_data_length; ++candidate) {
+            const size_t total = candidate + CSW_SIZE;
+            if (received < total) continue;
+            if (memcmp(response + candidate, "USBS", 4) != 0) continue;
+            if (!validate_csw(response, total, candidate, frame)) return false;
+            if (verbose) hex_dump("TCP response", response, total);
+            *actual_data_length = candidate;
+            return true;
+        }
+    }
+
+    fprintf(stderr, "Protocol error: no command-status trailer in response.\n");
+    return false;
 }
 
 static bool acquire_permission(socket_t control, bool verbose)
@@ -1250,6 +2735,11 @@ static bool send_heartbeat(socket_t control, bool verbose)
     uint8_t frame[FRAME_SIZE];
     uint8_t response[64];
 
+    if (control == SOCKET_INVALID) {
+        fprintf(stderr, "TCP heartbeat skipped: control socket is not connected.\n");
+        return false;
+    }
+
     build_permission_query(frame);
     if (!tcp_command(control, frame, 12,
                      response, sizeof(response), verbose)) {
@@ -1271,20 +2761,20 @@ static bool send_heartbeat(socket_t control, bool verbose)
     return true;
 }
 
-static bool response_reports_lock(const uint8_t *response,
-                                  size_t length,
-                                  const char *label)
+static tune_result_t response_reports_lock(const uint8_t *response,
+                                            size_t length,
+                                            const char *label)
 {
     if (length < 4 || response[0] != 0xF6 || response[1] != 0x03) {
         fprintf(stderr, "%s returned an unexpected response.\n", label);
-        return false;
+        return TUNE_RESULT_CONTROL_ERROR;
     }
 
     printf("%s result: signal lock=%s, service=%s.\n",
            label,
            response[2] == 1 ? "YES" : "NO",
            response[3] == 1 ? "FTA" : "scrambled/unknown");
-    return response[2] == 1;
+    return response[2] == 1 ? TUNE_RESULT_OK : TUNE_RESULT_NO_LOCK;
 }
 
 static bool configure_satellite(socket_t control, const options_t *opt)
@@ -1346,7 +2836,8 @@ static bool tune_device(socket_t control, const options_t *opt)
                          response, sizeof(response), opt->verbose)) {
             return false;
         }
-        if (!response_reports_lock(response, 4, "Program-index tune")) {
+        if (response_reports_lock(response, 4, "Program-index tune") !=
+            TUNE_RESULT_OK) {
             fprintf(stderr,
                     "The dongle reports NO SIGNAL LOCK. The saved channel "
                     "entry is valid, but the active LNB/DiSEqC setup does "
@@ -1375,7 +2866,8 @@ static bool tune_device(socket_t control, const options_t *opt)
                          response, sizeof(response), opt->verbose)) {
             return false;
         }
-        if (!response_reports_lock(response, 4, "Service-ID tune")) {
+        if (response_reports_lock(response, 4, "Service-ID tune") !=
+            TUNE_RESULT_OK) {
             fprintf(stderr,
                     "The dongle reports NO SIGNAL LOCK. Check LNB type, "
                     "DiSEqC input, dish signal, and transponder values.\n");
@@ -1836,25 +3328,28 @@ static bool reconnect_control_session(socket_t *control,
 {
     unsigned attempt;
 
+    if (control == NULL) return false;
     if (*control != SOCKET_INVALID) {
         CLOSESOCKET(*control);
         *control = SOCKET_INVALID;
     }
 
     for (attempt = 1; attempt <= 3U && g_running; ++attempt) {
+        socket_t candidate;
+
         fprintf(stderr, "Reconnecting device control session (attempt %u/3)...\n",
                 attempt);
-        *control = connect_tcp(opt->device_ip, opt->control_port,
-                               opt->timeout_ms);
-        if (*control != SOCKET_INVALID &&
-            acquire_permission(*control, opt->verbose)) {
-            fprintf(stderr, "Device control session restored.\n");
-            return true;
+        candidate = connect_tcp(opt->device_ip, opt->control_port,
+                                opt->timeout_ms);
+        if (candidate != SOCKET_INVALID) {
+            if (acquire_permission(candidate, opt->verbose)) {
+                *control = candidate;
+                fprintf(stderr, "Device control session restored.\n");
+                return true;
+            }
+            CLOSESOCKET(candidate);
         }
-        if (*control != SOCKET_INVALID) {
-            CLOSESOCKET(*control);
-            *control = SOCKET_INVALID;
-        }
+        *control = SOCKET_INVALID;
         SLEEP_MS(250U * attempt);
     }
     return false;
@@ -2282,6 +3777,21 @@ static bool parse_channel_tag(const char *tag, channel_t *channel)
         channel->type[i] = (char)toupper((unsigned char)channel->type[i]);
     }
     xml_decode(channel->name);
+    if (!xml_attribute(tag, "epg_id", channel->epg_id,
+                       sizeof(channel->epg_id)) &&
+        !xml_attribute(tag, "xmltv_id", channel->epg_id,
+                       sizeof(channel->epg_id))) {
+        snprintf(channel->epg_id, sizeof(channel->epg_id), "%u",
+                 (unsigned)channel->lcn);
+    }
+    xml_decode(channel->epg_id);
+    if (xml_attribute(tag, "prog_idx", text, sizeof(text)) &&
+        parse_u32(text, &channel->program_index)) {
+        channel->have_program_index = true;
+    }
+    if (xml_attribute(tag, "ts_id", text, sizeof(text))) {
+        (void)parse_u32(text, &channel->transport_stream_id);
+    }
     if (xml_attribute(tag, "fta", text, sizeof(text)) &&
         parse_u32(text, &number)) {
         channel->fta = number != 0U;
@@ -2452,6 +3962,1298 @@ static bool load_channel_list(const char *path, channel_list_t *list)
     return true;
 }
 
+static void free_epg_list(epg_list_t *list)
+{
+    free(list->items);
+    memset(list, 0, sizeof(*list));
+}
+
+static int xmltv_digit(const char *text, size_t index)
+{
+    const unsigned char ch = (unsigned char)text[index];
+    return isdigit(ch) ? (int)(ch - '0') : -1;
+}
+
+static bool xmltv_number(const char *text, size_t offset, size_t count,
+                         int *value)
+{
+    size_t i;
+    int result = 0;
+    for (i = 0; i < count; ++i) {
+        const int digit = xmltv_digit(text, offset + i);
+        if (digit < 0) {
+            return false;
+        }
+        result = result * 10 + digit;
+    }
+    *value = result;
+    return true;
+}
+
+static int64_t days_from_civil(int year, unsigned month, unsigned day)
+{
+    const int adjusted_year = year - (month <= 2U ? 1 : 0);
+    const int era = (adjusted_year >= 0 ? adjusted_year : adjusted_year - 399) / 400;
+    const unsigned year_of_era = (unsigned)(adjusted_year - era * 400);
+    const int shifted_month = (int)month + (month > 2U ? -3 : 9);
+    const unsigned day_of_year =
+        (153U * (unsigned)shifted_month + 2U) / 5U + day - 1U;
+    const unsigned day_of_era = year_of_era * 365U + year_of_era / 4U -
+                                year_of_era / 100U + day_of_year;
+    return (int64_t)era * 146097LL + (int64_t)day_of_era - 719468LL;
+}
+
+static bool parse_xmltv_time(const char *text, int64_t *utc_seconds)
+{
+    int year, month, day, hour, minute, second = 0;
+    size_t length;
+    size_t position;
+    int offset_seconds = 0;
+
+    if (text == NULL) {
+        return false;
+    }
+    length = strlen(text);
+    if (length < 12U ||
+        !xmltv_number(text, 0U, 4U, &year) ||
+        !xmltv_number(text, 4U, 2U, &month) ||
+        !xmltv_number(text, 6U, 2U, &day) ||
+        !xmltv_number(text, 8U, 2U, &hour) ||
+        !xmltv_number(text, 10U, 2U, &minute)) {
+        return false;
+    }
+    position = 12U;
+    if (length >= 14U && isdigit((unsigned char)text[12]) &&
+        isdigit((unsigned char)text[13])) {
+        if (!xmltv_number(text, 12U, 2U, &second)) {
+            return false;
+        }
+        position = 14U;
+    }
+    while (position < length && isspace((unsigned char)text[position])) {
+        ++position;
+    }
+    if (position + 5U <= length &&
+        (text[position] == '+' || text[position] == '-')) {
+        int offset_hour;
+        int offset_minute;
+        if (!xmltv_number(text, position + 1U, 2U, &offset_hour) ||
+            !xmltv_number(text, position + 3U, 2U, &offset_minute) ||
+            offset_hour > 23 || offset_minute > 59) {
+            return false;
+        }
+        offset_seconds = (offset_hour * 60 + offset_minute) * 60;
+        if (text[position] == '-') {
+            offset_seconds = -offset_seconds;
+        }
+    }
+    if (month < 1 || month > 12 || day < 1 || day > 31 ||
+        hour < 0 || hour > 23 || minute < 0 || minute > 59 ||
+        second < 0 || second > 60) {
+        return false;
+    }
+    *utc_seconds = days_from_civil(year, (unsigned)month, (unsigned)day) * 86400LL +
+                   (int64_t)hour * 3600LL + (int64_t)minute * 60LL + second -
+                   offset_seconds;
+    return true;
+}
+
+static void trim_in_place(char *text)
+{
+    char *start = text;
+    char *end;
+    while (*start != '\0' && isspace((unsigned char)*start)) {
+        ++start;
+    }
+    if (start != text) {
+        memmove(text, start, strlen(start) + 1U);
+    }
+    end = text + strlen(text);
+    while (end > text && isspace((unsigned char)end[-1])) {
+        --end;
+    }
+    *end = '\0';
+}
+
+static bool xml_element_text(const char *block,
+                             const char *element,
+                             char *output,
+                             size_t output_capacity)
+{
+    char opening[80];
+    char closing[96];
+    const char *start;
+    const char *content;
+    const char *end;
+    size_t used = 0U;
+    bool in_tag = false;
+    int length;
+
+    if (output_capacity == 0U) {
+        return false;
+    }
+    output[0] = '\0';
+    length = snprintf(opening, sizeof(opening), "<%s", element);
+    if (length <= 0 || (size_t)length >= sizeof(opening)) {
+        return false;
+    }
+    length = snprintf(closing, sizeof(closing), "</%s>", element);
+    if (length <= 0 || (size_t)length >= sizeof(closing)) {
+        return false;
+    }
+    start = strstr(block, opening);
+    if (start == NULL) {
+        return false;
+    }
+    content = strchr(start, '>');
+    if (content == NULL) {
+        return false;
+    }
+    ++content;
+    end = strstr(content, closing);
+    if (end == NULL) {
+        return false;
+    }
+    while (content < end && used + 1U < output_capacity) {
+        if (!in_tag && (size_t)(end - content) >= 9U &&
+            memcmp(content, "<![CDATA[", 9U) == 0) {
+            const char *cdata_end = strstr(content + 9U, "]]>");
+            const char *copy_end = cdata_end != NULL && cdata_end < end ?
+                                   cdata_end : end;
+            content += 9U;
+            while (content < copy_end && used + 1U < output_capacity) {
+                output[used++] = *content++;
+            }
+            content = cdata_end != NULL && cdata_end < end ? cdata_end + 3U : end;
+            continue;
+        }
+        if (*content == '<') {
+            in_tag = true;
+        } else if (*content == '>') {
+            in_tag = false;
+            if (used > 0U && !isspace((unsigned char)output[used - 1U]) &&
+                used + 1U < output_capacity) {
+                output[used++] = ' ';
+            }
+        } else if (!in_tag) {
+            output[used++] = *content;
+        }
+        ++content;
+    }
+    output[used] = '\0';
+    xml_decode(output);
+    trim_in_place(output);
+    return output[0] != '\0';
+}
+
+static bool append_epg_program(epg_list_t *list,
+                               size_t *capacity,
+                               const epg_program_t *program)
+{
+    if (list->count == *capacity) {
+        const size_t new_capacity = *capacity == 0U ? 256U : *capacity * 2U;
+        epg_program_t *items;
+        if (new_capacity < *capacity ||
+            new_capacity > SIZE_MAX / sizeof(*items)) {
+            return false;
+        }
+        items = (epg_program_t *)realloc(list->items,
+                                         new_capacity * sizeof(*items));
+        if (items == NULL) {
+            return false;
+        }
+        list->items = items;
+        *capacity = new_capacity;
+    }
+    list->items[list->count++] = *program;
+    return true;
+}
+
+static int compare_epg_programs(const void *left, const void *right)
+{
+    const epg_program_t *a = (const epg_program_t *)left;
+    const epg_program_t *b = (const epg_program_t *)right;
+    const int channel_compare = strcmp(a->channel_id, b->channel_id);
+    if (channel_compare != 0) {
+        return channel_compare;
+    }
+    if (a->start_utc < b->start_utc) {
+        return -1;
+    }
+    if (a->start_utc > b->start_utc) {
+        return 1;
+    }
+    return 0;
+}
+
+static bool load_epg_file(const char *path, epg_list_t *list)
+{
+    FILE *file;
+    long file_length;
+    char *document;
+    char *cursor;
+    size_t capacity = 0U;
+    size_t malformed = 0U;
+
+    memset(list, 0, sizeof(*list));
+    if (path == NULL || *path == '\0') {
+        return true;
+    }
+    file = fopen(path, "rb");
+    if (file == NULL) {
+        fprintf(stderr, "EPG file '%s' is not available: %s\n",
+                path, strerror(errno));
+        return true;
+    }
+    if (fseek(file, 0, SEEK_END) != 0 ||
+        (file_length = ftell(file)) < 0 ||
+        (unsigned long)file_length > XML_FILE_LIMIT ||
+        fseek(file, 0, SEEK_SET) != 0) {
+        fprintf(stderr, "EPG XML is unreadable or exceeds %u MiB.\n",
+                (unsigned)(XML_FILE_LIMIT / (1024U * 1024U)));
+        fclose(file);
+        return false;
+    }
+    document = (char *)malloc((size_t)file_length + 1U);
+    if (document == NULL) {
+        fclose(file);
+        return false;
+    }
+    if (fread(document, 1, (size_t)file_length, file) !=
+        (size_t)file_length) {
+        fprintf(stderr, "Could not read complete EPG XML.\n");
+        fclose(file);
+        free(document);
+        return false;
+    }
+    fclose(file);
+    document[file_length] = '\0';
+
+    cursor = document;
+    while ((cursor = strstr(cursor, "<programme")) != NULL) {
+        char *tag_end = find_xml_tag_end(cursor);
+        char *closing;
+        epg_program_t program;
+        char start_text[64];
+        char stop_text[64];
+        char *tag;
+        size_t tag_length;
+        size_t block_length;
+        char *block;
+
+        if (tag_end == NULL) {
+            ++malformed;
+            break;
+        }
+        closing = strstr(tag_end + 1, "</programme>");
+        if (closing == NULL) {
+            ++malformed;
+            break;
+        }
+        tag_length = (size_t)(tag_end - cursor + 1);
+        block_length = (size_t)(closing - cursor + strlen("</programme>"));
+        if (tag_length > 65536U || block_length > 1024U * 1024U) {
+            ++malformed;
+            cursor = closing + strlen("</programme>");
+            continue;
+        }
+        tag = (char *)malloc(tag_length + 1U);
+        block = (char *)malloc(block_length + 1U);
+        if (tag == NULL || block == NULL) {
+            free(tag);
+            free(block);
+            free(document);
+            free_epg_list(list);
+            return false;
+        }
+        memcpy(tag, cursor, tag_length);
+        tag[tag_length] = '\0';
+        memcpy(block, cursor, block_length);
+        block[block_length] = '\0';
+        memset(&program, 0, sizeof(program));
+
+        if (!xml_attribute(tag, "channel", program.channel_id,
+                           sizeof(program.channel_id)) ||
+            !xml_attribute(tag, "start", start_text, sizeof(start_text)) ||
+            !xml_attribute(tag, "stop", stop_text, sizeof(stop_text)) ||
+            !parse_xmltv_time(start_text, &program.start_utc) ||
+            !parse_xmltv_time(stop_text, &program.stop_utc) ||
+            program.stop_utc <= program.start_utc ||
+            !xml_element_text(block, "title", program.title,
+                              sizeof(program.title))) {
+            ++malformed;
+        } else {
+            xml_decode(program.channel_id);
+            (void)xml_element_text(block, "sub-title", program.subtitle,
+                                   sizeof(program.subtitle));
+            (void)xml_element_text(block, "desc", program.description,
+                                   sizeof(program.description));
+            (void)xml_element_text(block, "category", program.category,
+                                   sizeof(program.category));
+            if (!append_epg_program(list, &capacity, &program)) {
+                free(tag);
+                free(block);
+                free(document);
+                free_epg_list(list);
+                return false;
+            }
+        }
+        free(tag);
+        free(block);
+        cursor = closing + strlen("</programme>");
+    }
+    free(document);
+    if (list->count > 1U) {
+        qsort(list->items, list->count, sizeof(list->items[0]),
+              compare_epg_programs);
+    }
+    list->loaded_utc = (int64_t)time(NULL);
+    printf("Loaded %zu EPG programmes from %s.\n", list->count, path);
+    if (malformed > 0U) {
+        fprintf(stderr, "Warning: skipped %zu malformed EPG programme(s).\n",
+                malformed);
+    }
+    return true;
+}
+
+
+static uint16_t read_u16_be(const uint8_t *src)
+{
+    return (uint16_t)(((uint16_t)src[0] << 8) | src[1]);
+}
+
+static uint32_t read_u32_be(const uint8_t *src)
+{
+    return ((uint32_t)src[0] << 24) | ((uint32_t)src[1] << 16) |
+           ((uint32_t)src[2] << 8) | (uint32_t)src[3];
+}
+
+static void build_device_channel_length_request(uint8_t frame[FRAME_SIZE])
+{
+    build_frame(frame, 8, 0xF6, 0x20);
+}
+
+static void build_device_channel_data_request(uint8_t frame[FRAME_SIZE],
+                                              uint32_t length)
+{
+    build_frame(frame, length, 0xF6, 0x21);
+}
+
+static void build_device_epg_length_request(uint8_t frame[FRAME_SIZE],
+                                            uint32_t program_index,
+                                            unsigned response_bytes)
+{
+    build_frame(frame, response_bytes, 0xF6, 0x30);
+    put_u32_be(&frame[25], program_index);
+}
+
+static void build_device_epg_data_request(uint8_t frame[FRAME_SIZE],
+                                          uint32_t program_index,
+                                          uint32_t length)
+{
+    build_frame(frame, length, 0xF6, 0x31);
+    put_u32_be(&frame[25], program_index);
+}
+
+
+#define DEVICE_SCAN_START_ACTION 126U
+#define DEVICE_SCAN_STOP_ACTION  3U
+#define DEVICE_SCAN_POLL_SECONDS 2.0
+
+static uint8_t device_scan_flags(const options_t *opt)
+{
+    uint8_t flags = opt->device_scan_network ? 0x01U : 0x00U;
+    flags |= (uint8_t)((opt->device_scan_order_by & 0x02U) << 1U);
+    flags |= (uint8_t)((opt->device_scan_search_range & 0x07U) << 3U);
+    return flags;
+}
+
+static void build_device_scan_action_request(uint8_t frame[FRAME_SIZE],
+                                             const options_t *opt,
+                                             uint8_t action)
+{
+    build_frame(frame, 2U, 0xF6, 0x10);
+    frame[21] = action;
+    frame[22] = device_scan_flags(opt);
+}
+
+static void build_device_scan_status_request(uint8_t frame[FRAME_SIZE])
+{
+    build_frame(frame, 17U, 0xF6, 0x02);
+}
+
+static bool device_send_scan_action(socket_t *control,
+                                    const options_t *opt,
+                                    uint8_t action)
+{
+    uint8_t frame[FRAME_SIZE];
+    uint8_t response[2U + CSW_SIZE];
+    if (*control == SOCKET_INVALID) return false;
+    build_device_scan_action_request(frame, opt, action);
+    if (!tcp_command(*control, frame, 2U, response, sizeof(response),
+                     opt->verbose) ||
+        response[0] != 0xF6 || response[1] != 0x10) {
+        return false;
+    }
+    return true;
+}
+
+static void device_scan_mark_stopped(device_update_state_t *state,
+                                     const char *message)
+{
+    state->scan_running = false;
+    state->scan_cancel_requested = false;
+    state->busy = false;
+    snprintf(state->last_action, sizeof(state->last_action), "scan");
+    snprintf(state->last_message, sizeof(state->last_message), "%s", message);
+}
+
+static bool device_start_scan(socket_t *control,
+                              const options_t *opt,
+                              device_update_state_t *state)
+{
+    const double now = monotonic_seconds();
+    if (state->busy || state->scan_running) return false;
+    state->busy = true;
+    state->scan_running = true;
+    state->scan_cancel_requested = false;
+    state->scan_progress = 0U;
+    state->scan_state = 1U;
+    state->scan_frequency_mhz = 0U;
+    state->scan_symbol_rate_ks = 0U;
+    state->scan_mode = 0U;
+    state->scan_tv_count = 0U;
+    state->scan_radio_count = 0U;
+    state->last_scan_attempt_utc = (int64_t)time(NULL);
+    state->scan_started = now;
+    state->scan_next_poll = now + 0.5;
+    state->scan_deadline = now + (double)opt->device_scan_timeout_minutes * 60.0;
+    snprintf(state->last_action, sizeof(state->last_action), "scan");
+    snprintf(state->last_message, sizeof(state->last_message),
+             "Starting receiver channel scan");
+
+    if (!device_send_scan_action(control, opt, DEVICE_SCAN_START_ACTION)) {
+        device_scan_mark_stopped(state, "Receiver rejected channel-scan start");
+        return false;
+    }
+    printf("Receiver channel scan started (network=%s, range=%u, order=%u).\\n",
+           opt->device_scan_network ? "yes" : "no",
+           (unsigned)opt->device_scan_search_range,
+           (unsigned)opt->device_scan_order_by);
+    return true;
+}
+
+static bool device_cancel_scan(socket_t *control,
+                               const options_t *opt,
+                               device_update_state_t *state)
+{
+    bool sent;
+    if (!state->scan_running) return false;
+    sent = device_send_scan_action(control, opt, DEVICE_SCAN_STOP_ACTION);
+    device_scan_mark_stopped(state,
+                             sent ? "Receiver channel scan cancelled" :
+                                    "Scan cancelled locally; receiver did not acknowledge stop");
+    printf("Receiver channel scan cancelled.\\n");
+    return sent;
+}
+
+
+
+static bool atomic_write_bytes(const char *path,
+                               const uint8_t *data,
+                               size_t length)
+{
+    char temporary[1200];
+    FILE *file;
+    if (path == NULL || *path == '\0' ||
+        snprintf(temporary, sizeof(temporary), "%s.tmp", path) < 0 ||
+        strlen(path) + 4U >= sizeof(temporary)) {
+        return false;
+    }
+    file = fopen(temporary, "wb");
+    if (file == NULL) {
+        fprintf(stderr, "Cannot create temporary file '%s': %s\n",
+                temporary, strerror(errno));
+        return false;
+    }
+    if (fwrite(data, 1, length, file) != length || fflush(file) != 0 ||
+        fclose(file) != 0) {
+        fprintf(stderr, "Could not write complete temporary file '%s'.\n",
+                temporary);
+        remove(temporary);
+        return false;
+    }
+#ifdef _WIN32
+    remove(path);
+#endif
+    if (rename(temporary, path) != 0) {
+        fprintf(stderr, "Could not install '%s': %s\n", path, strerror(errno));
+        remove(temporary);
+        return false;
+    }
+    return true;
+}
+
+static bool device_download_channel_xml(socket_t control,
+                                        const options_t *opt,
+                                        uint8_t **xml,
+                                        size_t *xml_length)
+{
+    uint8_t frame[FRAME_SIZE];
+    uint8_t length_response[8 + CSW_SIZE];
+    uint8_t *response = NULL;
+    uint32_t transfer_length;
+    size_t body_length;
+
+    *xml = NULL;
+    *xml_length = 0U;
+    build_device_channel_length_request(frame);
+    if (!tcp_command(control, frame, 8, length_response,
+                     sizeof(length_response), opt->verbose) ||
+        length_response[0] != 0xF6 || length_response[1] != 0x20) {
+        fprintf(stderr, "Native channel-list length request failed.\n");
+        return false;
+    }
+    transfer_length = read_u32_be(&length_response[2]);
+    if (transfer_length < 32U || transfer_length > XML_FILE_LIMIT) {
+        fprintf(stderr, "Device reported invalid channel-list size %u.\n",
+                (unsigned)transfer_length);
+        return false;
+    }
+    response = (uint8_t *)malloc((size_t)transfer_length + CSW_SIZE);
+    if (response == NULL) {
+        return false;
+    }
+    build_device_channel_data_request(frame, transfer_length);
+    if (!tcp_command(control, frame, transfer_length, response,
+                     (size_t)transfer_length + CSW_SIZE, opt->verbose) ||
+        response[0] != 0xF6 || response[1] != 0x21) {
+        fprintf(stderr, "Native channel-list download failed.\n");
+        free(response);
+        return false;
+    }
+    body_length = (size_t)transfer_length - 2U;
+    while (body_length > 0U &&
+           (response[2U + body_length - 1U] == 0U ||
+            response[2U + body_length - 1U] == 0xFFU)) {
+        --body_length;
+    }
+    if (body_length == 0U || response[2] != '<') {
+        fprintf(stderr, "Native channel-list response is not XML.\n");
+        free(response);
+        return false;
+    }
+    *xml = (uint8_t *)malloc(body_length);
+    if (*xml == NULL) {
+        free(response);
+        return false;
+    }
+    memcpy(*xml, response + 2, body_length);
+    *xml_length = body_length;
+    free(response);
+    return true;
+}
+
+static void preserve_channel_epg_ids(channel_list_t *replacement,
+                                     const channel_list_t *current)
+{
+    size_t i, j;
+    if (current == NULL) return;
+    for (i = 0; i < replacement->count; ++i) {
+        channel_t *next = &replacement->items[i];
+        char default_id[32];
+        snprintf(default_id, sizeof(default_id), "%u", (unsigned)next->lcn);
+        if (strcmp(next->epg_id, default_id) != 0) continue;
+        for (j = 0; j < current->count; ++j) {
+            const channel_t *old = &current->items[j];
+            if ((old->service_id == next->service_id &&
+                 old->frequency_mhz == next->frequency_mhz &&
+                 old->symbol_rate_ks == next->symbol_rate_ks &&
+                 old->polarization == next->polarization) ||
+                old->lcn == next->lcn) {
+                snprintf(next->epg_id, sizeof(next->epg_id), "%s", old->epg_id);
+                break;
+            }
+        }
+    }
+}
+
+static bool device_refresh_channels(socket_t *control,
+                                    const options_t *opt,
+                                    channel_list_t *channels,
+                                    device_update_state_t *state)
+{
+    uint8_t *xml = NULL;
+    size_t xml_length = 0U;
+    channel_list_t replacement;
+    char candidate_path[1200];
+    bool candidate_written = false;
+
+    memset(&replacement, 0, sizeof(replacement));
+    state->busy = true;
+    state->last_channels_attempt_utc = (int64_t)time(NULL);
+    snprintf(state->last_action, sizeof(state->last_action), "channels");
+    snprintf(state->last_message, sizeof(state->last_message),
+             "Downloading channel list from device");
+
+    if (opt->channels_path == NULL ||
+        snprintf(candidate_path, sizeof(candidate_path), "%s.device-new",
+                 opt->channels_path) < 0 ||
+        strlen(opt->channels_path) + strlen(".device-new") >= sizeof(candidate_path)) {
+        snprintf(state->last_message, sizeof(state->last_message),
+                 "Channel-list path is too long");
+        state->busy = false;
+        return false;
+    }
+
+    if (!device_download_channel_xml(*control, opt, &xml, &xml_length) ||
+        !atomic_write_bytes(candidate_path, xml, xml_length)) {
+        free(xml);
+        if (!reconnect_control_session(control, opt)) {
+            fprintf(stderr, "Device control recovery after channel update failed.\n");
+        }
+        snprintf(state->last_message, sizeof(state->last_message),
+                 "Device channel update failed");
+        state->busy = false;
+        return false;
+    }
+    candidate_written = true;
+
+    if (!load_channel_list(candidate_path, &replacement) ||
+        replacement.count == 0U) {
+        free_channel_list(&replacement);
+        remove(candidate_path);
+        free(xml);
+        snprintf(state->last_message, sizeof(state->last_message),
+                 "Downloaded channel XML could not be parsed");
+        state->busy = false;
+        return false;
+    }
+
+    preserve_channel_epg_ids(&replacement, channels);
+    if (!atomic_write_bytes(opt->channels_path, xml, xml_length)) {
+        free_channel_list(&replacement);
+        if (candidate_written) remove(candidate_path);
+        free(xml);
+        snprintf(state->last_message, sizeof(state->last_message),
+                 "Validated channel XML could not be installed");
+        state->busy = false;
+        return false;
+    }
+
+    if (candidate_written) remove(candidate_path);
+    free(xml);
+    free_channel_list(channels);
+    *channels = replacement;
+    state->epg_length_response_bytes = 0U;
+    state->last_channels_success_utc = (int64_t)time(NULL);
+    snprintf(state->last_message, sizeof(state->last_message),
+             "Loaded %zu channels from device", channels->count);
+    state->busy = false;
+    return true;
+}
+
+typedef enum {
+    DEVICE_EPG_FETCH_OK = 0,
+    DEVICE_EPG_FETCH_EMPTY,
+    DEVICE_EPG_FETCH_CONTROL_ERROR
+} device_epg_fetch_result_t;
+
+#define DEVICE_EPG_CHANNELS_PER_SESSION 40U
+#define DEVICE_EPG_FETCH_RETRIES 1U
+
+static device_epg_fetch_result_t device_download_epg_xml(
+    socket_t *control,
+    const options_t *opt,
+    device_update_state_t *state,
+    uint32_t program_index,
+    uint8_t **xml,
+    size_t *xml_length)
+{
+    uint8_t frame[FRAME_SIZE];
+    uint8_t length_response[6 + CSW_SIZE];
+    uint8_t *response = NULL;
+    uint32_t transfer_length = 0U;
+    size_t response_data_length = 0U;
+    size_t body_length;
+    unsigned candidates[2];
+    size_t candidate_count = 0U;
+    size_t attempt;
+
+    *xml = NULL;
+    *xml_length = 0U;
+
+    if (state->epg_length_response_bytes == 4U ||
+        state->epg_length_response_bytes == 6U) {
+        candidates[candidate_count++] = state->epg_length_response_bytes;
+    } else {
+        candidates[candidate_count++] = 4U;
+        candidates[candidate_count++] = 6U;
+    }
+
+    for (attempt = 0U; attempt < candidate_count; ++attempt) {
+        const unsigned requested = candidates[attempt];
+        memset(length_response, 0, sizeof(length_response));
+        build_device_epg_length_request(frame, program_index, requested);
+
+        if (tcp_command_variable(*control, frame, 4U, 6U,
+                                 length_response, sizeof(length_response),
+                                 &response_data_length, opt->verbose) &&
+            length_response[0] == 0xF6 && length_response[1] == 0x30) {
+            if (response_data_length == 4U) {
+                transfer_length = read_u16_be(&length_response[2]);
+            } else if (response_data_length == 6U) {
+                transfer_length = read_u32_be(&length_response[2]);
+            } else {
+                return DEVICE_EPG_FETCH_CONTROL_ERROR;
+            }
+            state->epg_length_response_bytes =
+                (unsigned)response_data_length;
+            break;
+        }
+
+        if (attempt + 1U < candidate_count) {
+            fprintf(stderr,
+                    "EPG length mode %u failed; reconnecting and trying %u-byte mode.\n",
+                    requested, candidates[attempt + 1U]);
+            if (!reconnect_control_session(control, opt))
+                return DEVICE_EPG_FETCH_CONTROL_ERROR;
+        } else {
+            return DEVICE_EPG_FETCH_CONTROL_ERROR;
+        }
+    }
+
+    if (transfer_length < 30U) return DEVICE_EPG_FETCH_EMPTY;
+    if (transfer_length > XML_FILE_LIMIT) {
+        fprintf(stderr, "Device reported invalid EPG size %u.\n",
+                (unsigned)transfer_length);
+        return DEVICE_EPG_FETCH_CONTROL_ERROR;
+    }
+
+    response = (uint8_t *)malloc((size_t)transfer_length + CSW_SIZE);
+    if (response == NULL) return DEVICE_EPG_FETCH_CONTROL_ERROR;
+    build_device_epg_data_request(frame, program_index, transfer_length);
+    if (!tcp_command(*control, frame, transfer_length, response,
+                     (size_t)transfer_length + CSW_SIZE, opt->verbose) ||
+        response[0] != 0xF6 || response[1] != 0x31) {
+        free(response);
+        return DEVICE_EPG_FETCH_CONTROL_ERROR;
+    }
+
+    body_length = (size_t)transfer_length - 2U;
+    while (body_length > 0U &&
+           (response[2U + body_length - 1U] == 0U ||
+            response[2U + body_length - 1U] == 0xFFU)) --body_length;
+    if (body_length == 0U) {
+        free(response);
+        return DEVICE_EPG_FETCH_EMPTY;
+    }
+    if (response[2] != '<') {
+        fprintf(stderr, "Native EPG response is not XML.\n");
+        free(response);
+        return DEVICE_EPG_FETCH_CONTROL_ERROR;
+    }
+
+    *xml = (uint8_t *)malloc(body_length + 1U);
+    if (*xml == NULL) {
+        free(response);
+        return DEVICE_EPG_FETCH_CONTROL_ERROR;
+    }
+    memcpy(*xml, response + 2, body_length);
+    (*xml)[body_length] = 0;
+    *xml_length = body_length;
+    free(response);
+    return DEVICE_EPG_FETCH_OK;
+}
+
+static bool parse_hhmm_seconds(const char *text, int *seconds)
+{
+    int h = 0, m = 0, s = 0;
+    if (sscanf(text, "%d:%d:%d", &h, &m, &s) < 2 ||
+        h < 0 || m < 0 || m > 59 || s < 0 || s > 59) return false;
+    *seconds = h * 3600 + m * 60 + s;
+    return true;
+}
+
+static bool parse_native_epg_xml(const uint8_t *xml,
+                                 const channel_t *channel,
+                                 epg_list_t *list,
+                                 size_t *capacity)
+{
+    char *document = (char *)malloc(strlen((const char *)xml) + 1U);
+    char *cursor;
+    if (document == NULL) return false;
+    strcpy(document, (const char *)xml);
+    cursor = document;
+    while ((cursor = strstr(cursor, "<evt")) != NULL) {
+        char *end = find_xml_tag_end(cursor);
+        char saved;
+        char text[512];
+        char date_text[64], time_text[64], duration_text[64];
+        uint32_t mjd;
+        int start_seconds, duration_seconds;
+        epg_program_t program;
+        if (end == NULL) break;
+        saved = end[1];
+        end[1] = '\0';
+        memset(&program, 0, sizeof(program));
+        if (xml_attribute(cursor, "des", text, sizeof(text)) &&
+            xml_attribute(cursor, "date", date_text, sizeof(date_text)) &&
+            xml_attribute(cursor, "time", time_text, sizeof(time_text)) &&
+            xml_attribute(cursor, "dur", duration_text, sizeof(duration_text)) &&
+            parse_u32(date_text, &mjd) &&
+            parse_hhmm_seconds(time_text, &start_seconds) &&
+            parse_hhmm_seconds(duration_text, &duration_seconds) &&
+            duration_seconds > 0) {
+            const int64_t mjd_epoch = days_from_civil(1858, 11U, 17U);
+            snprintf(program.channel_id, sizeof(program.channel_id), "%s",
+                     channel->epg_id);
+            xml_decode(text);
+            trim_in_place(text);
+            snprintf(program.title, sizeof(program.title), "%.255s",
+                     *text != '\0' ? text : "Untitled programme");
+            program.start_utc = (mjd_epoch + (int64_t)mjd) * 86400LL +
+                                (int64_t)start_seconds;
+            program.stop_utc = program.start_utc + duration_seconds;
+            if (!append_epg_program(list, capacity, &program)) {
+                end[1] = saved;
+                free(document);
+                return false;
+            }
+        }
+        end[1] = saved;
+        cursor = end + 1;
+    }
+    free(document);
+    return true;
+}
+
+
+static bool xml_write_escaped(FILE *file, const char *text)
+{
+    const unsigned char *p = (const unsigned char *)text;
+    while (*p) {
+        const char *entity = NULL;
+        switch (*p) {
+            case '&': entity = "&amp;"; break;
+            case '<': entity = "&lt;"; break;
+            case '>': entity = "&gt;"; break;
+            case '\"': entity = "&quot;"; break;
+            case '\'': entity = "&apos;"; break;
+            default: break;
+        }
+        if (entity != NULL) {
+            if (fputs(entity, file) == EOF) return false;
+        } else if (fputc(*p, file) == EOF) return false;
+        ++p;
+    }
+    return true;
+}
+
+static void format_xmltv_utc(int64_t utc, char output[32])
+{
+    const int64_t days = utc / 86400LL;
+    int64_t seconds = utc % 86400LL;
+    int year;
+    unsigned month, day;
+    int z, era, doe, yoe, doy, mp;
+    if (seconds < 0) seconds += 86400LL;
+    z = (int)(days + 719468LL);
+    era = (z >= 0 ? z : z - 146096) / 146097;
+    doe = z - era * 146097;
+    yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    year = yoe + era * 400;
+    doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    mp = (5 * doy + 2) / 153;
+    day = (unsigned)(doy - (153 * mp + 2) / 5 + 1);
+    month = (unsigned)(mp + (mp < 10 ? 3 : -9));
+    year += month <= 2U;
+    snprintf(output, 32, "%04d%02u%02u%02lld%02lld%02lld +0000",
+             year, month, day,
+             (long long)(seconds / 3600LL),
+             (long long)((seconds / 60LL) % 60LL),
+             (long long)(seconds % 60LL));
+}
+
+static bool write_epg_xmltv(const char *path,
+                            const channel_list_t *channels,
+                            const epg_list_t *epg)
+{
+    char temporary[1200];
+    FILE *file;
+    size_t i;
+    if (snprintf(temporary, sizeof(temporary), "%s.tmp", path) < 0 ||
+        strlen(path) + 4U >= sizeof(temporary)) return false;
+    file = fopen(temporary, "wb");
+    if (file == NULL) return false;
+    if (fputs("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+              "<tv generator-info-name=\"SORALink\">\n", file) == EOF)
+        goto fail;
+    for (i = 0; i < channels->count; ++i) {
+        if (fputs("  <channel id=\"", file) == EOF ||
+            !xml_write_escaped(file, channels->items[i].epg_id) ||
+            fputs("\"><display-name>", file) == EOF ||
+            !xml_write_escaped(file, channels->items[i].name) ||
+            fputs("</display-name></channel>\n", file) == EOF) goto fail;
+    }
+    for (i = 0; i < epg->count; ++i) {
+        char start[32], stop[32];
+        const epg_program_t *program = &epg->items[i];
+        format_xmltv_utc(program->start_utc, start);
+        format_xmltv_utc(program->stop_utc, stop);
+        if (fprintf(file, "  <programme start=\"%s\" stop=\"%s\" channel=\"",
+                    start, stop) < 0 ||
+            !xml_write_escaped(file, program->channel_id) ||
+            fputs("\"><title>", file) == EOF ||
+            !xml_write_escaped(file, program->title) ||
+            fputs("</title></programme>\n", file) == EOF) goto fail;
+    }
+    if (fputs("</tv>\n", file) == EOF || fflush(file) != 0 || fclose(file) != 0)
+        goto fail_closed;
+#ifdef _WIN32
+    remove(path);
+#endif
+    if (rename(temporary, path) != 0) { remove(temporary); return false; }
+    return true;
+fail:
+    fclose(file);
+fail_closed:
+    remove(temporary);
+    return false;
+}
+
+static bool channel_is_replaced(const channel_list_t *channels,
+                                const bool *replace,
+                                const char *epg_id)
+{
+    size_t i;
+    for (i = 0; i < channels->count; ++i)
+        if (replace[i] && strcmp(channels->items[i].epg_id, epg_id) == 0)
+            return true;
+    return false;
+}
+
+static bool device_refresh_epg(socket_t *control,
+                               const options_t *opt,
+                               const channel_list_t *channels,
+                               epg_list_t *epg,
+                               device_update_state_t *state,
+                               bool force)
+{
+    epg_list_t merged;
+    size_t capacity = 0U, i;
+    bool *replace = (bool *)calloc(channels->count, sizeof(bool));
+    size_t updated = 0U, empty = 0U, failed = 0U;
+    size_t session_channels = 0U;
+    size_t proactive_reconnects = 0U;
+    size_t recovery_reconnects = 0U;
+    bool completed = true;
+    bool control_restored = true;
+
+    (void)force;
+    if (replace == NULL && channels->count != 0U) return false;
+    memset(&merged, 0, sizeof(merged));
+    state->busy = true;
+    state->last_epg_attempt_utc = (int64_t)time(NULL);
+    snprintf(state->last_action, sizeof(state->last_action), "epg");
+    snprintf(state->last_message, sizeof(state->last_message),
+             "Refreshing native device EPG");
+
+    for (i = 0; i < channels->count; ++i) {
+        const channel_t *channel = &channels->items[i];
+        uint8_t *xml = NULL;
+        size_t xml_length = 0U;
+        size_t before;
+        unsigned retry;
+        device_epg_fetch_result_t fetch = DEVICE_EPG_FETCH_CONTROL_ERROR;
+
+        if (!channel->have_program_index) {
+            ++failed;
+            continue;
+        }
+
+        if (session_channels >= DEVICE_EPG_CHANNELS_PER_SESSION) {
+            printf("Native EPG: rotating receiver control session after %zu channels.\n",
+                   session_channels);
+            if (!reconnect_control_session(control, opt)) {
+                completed = false;
+                control_restored = false;
+                ++failed;
+                break;
+            }
+            ++proactive_reconnects;
+            session_channels = 0U;
+        }
+
+        for (retry = 0U; retry <= DEVICE_EPG_FETCH_RETRIES; ++retry) {
+            fetch = device_download_epg_xml(control, opt, state,
+                                            channel->program_index,
+                                            &xml, &xml_length);
+            if (fetch != DEVICE_EPG_FETCH_CONTROL_ERROR) break;
+
+            free(xml);
+            xml = NULL;
+            xml_length = 0U;
+
+            if (retry >= DEVICE_EPG_FETCH_RETRIES) {
+                completed = false;
+                ++failed;
+                break;
+            }
+
+            fprintf(stderr,
+                    "Native EPG: receiver session ended at channel %zu/%zu; "
+                    "reconnecting and retrying this channel.\n",
+                    i + 1U, channels->count);
+            if (!reconnect_control_session(control, opt)) {
+                completed = false;
+                control_restored = false;
+                ++failed;
+                break;
+            }
+            ++recovery_reconnects;
+            session_channels = 0U;
+        }
+
+        if (!completed && fetch == DEVICE_EPG_FETCH_CONTROL_ERROR) break;
+        ++session_channels;
+
+        if (fetch == DEVICE_EPG_FETCH_EMPTY) {
+            ++empty;
+            if (((i + 1U) % 50U) == 0U || i + 1U == channels->count) {
+                printf("Native EPG: checked %zu/%zu channels "
+                       "(%zu updated, %zu empty, %zu failed).\n",
+                       i + 1U, channels->count, updated, empty, failed);
+            }
+            continue;
+        }
+        if (fetch != DEVICE_EPG_FETCH_OK) {
+            ++failed;
+            continue;
+        }
+
+        before = merged.count;
+        if (!parse_native_epg_xml(xml, channel, &merged, &capacity)) {
+            free(xml);
+            free(replace);
+            free_epg_list(&merged);
+            state->busy = false;
+            return false;
+        }
+        free(xml);
+        if (merged.count > before) {
+            replace[i] = true;
+            ++updated;
+        } else {
+            ++empty;
+        }
+        if (((i + 1U) % 50U) == 0U || i + 1U == channels->count) {
+            printf("Native EPG: checked %zu/%zu channels "
+                   "(%zu updated, %zu empty, %zu failed).\n",
+                   i + 1U, channels->count, updated, empty, failed);
+        }
+    }
+
+    for (i = 0; i < epg->count; ++i) {
+        if (!channel_is_replaced(channels, replace, epg->items[i].channel_id) &&
+            !append_epg_program(&merged, &capacity, &epg->items[i])) {
+            free(replace);
+            free_epg_list(&merged);
+            state->busy = false;
+            return false;
+        }
+    }
+    free(replace);
+    if (merged.count > 1U)
+        qsort(merged.items, merged.count, sizeof(merged.items[0]), compare_epg_programs);
+    merged.loaded_utc = (int64_t)time(NULL);
+    if (!write_epg_xmltv(opt->epg_path, channels, &merged)) {
+        free_epg_list(&merged);
+        snprintf(state->last_message, sizeof(state->last_message),
+                 "Could not write native XMLTV file");
+        state->busy = false;
+        return false;
+    }
+    free_epg_list(epg);
+    *epg = merged;
+
+    if (*control == SOCKET_INVALID) {
+        control_restored = reconnect_control_session(control, opt);
+    }
+
+    state->last_epg_updated_channels = updated;
+    state->last_epg_skipped_channels = empty;
+    state->last_epg_failed_channels = failed;
+    if (completed && control_restored) {
+        state->last_epg_success_utc = (int64_t)time(NULL);
+        if (updated == 0U && empty > 0U && failed == 0U) {
+            snprintf(state->last_message, sizeof(state->last_message),
+                     "Receiver EPG cache is empty: 0 updated, %zu empty; "
+                     "%zu planned and %zu recovery reconnects",
+                     empty, proactive_reconnects, recovery_reconnects);
+        } else {
+            snprintf(state->last_message, sizeof(state->last_message),
+                     "EPG refresh complete: %zu updated, %zu empty, %zu failed; "
+                     "%zu planned and %zu recovery reconnects",
+                     updated, empty, failed,
+                     proactive_reconnects, recovery_reconnects);
+        }
+    } else {
+        snprintf(state->last_message, sizeof(state->last_message),
+                 "EPG refresh stopped at %zu/%zu channels; control %s",
+                 i < channels->count ? i + 1U : channels->count,
+                 channels->count,
+                 control_restored ? "was restored" : "could not be restored");
+    }
+    state->busy = false;
+
+    return completed && control_restored;
+}
+
+
+static bool device_scan_step(socket_t *control,
+                             const options_t *opt,
+                             channel_list_t *channels,
+                             epg_list_t *epg,
+                             device_update_state_t *state,
+                             tuning_state_t *tuning)
+{
+    uint8_t frame[FRAME_SIZE];
+    uint8_t response[17U + CSW_SIZE];
+    const double now = monotonic_seconds();
+
+    if (!state->scan_running) return true;
+    if (state->scan_cancel_requested) {
+        (void)device_cancel_scan(control, opt, state);
+        memset(tuning, 0, sizeof(*tuning));
+        return true;
+    }
+    if (now >= state->scan_deadline) {
+        (void)device_send_scan_action(control, opt, DEVICE_SCAN_STOP_ACTION);
+        device_scan_mark_stopped(state, "Receiver channel scan timed out");
+        memset(tuning, 0, sizeof(*tuning));
+        return false;
+    }
+    if (now < state->scan_next_poll) return true;
+
+    build_device_scan_status_request(frame);
+    if (*control == SOCKET_INVALID ||
+        !tcp_command(*control, frame, 17U, response, sizeof(response),
+                     opt->verbose) ||
+        response[0] != 0xF6 || response[1] != 0x02) {
+        fprintf(stderr, "Receiver scan-status poll failed; reconnecting.\\n");
+        if (!reconnect_control_session(control, opt)) {
+            device_scan_mark_stopped(state,
+                                     "Channel scan stopped: control reconnect failed");
+            return false;
+        }
+        state->scan_next_poll = monotonic_seconds() + DEVICE_SCAN_POLL_SECONDS;
+        return true;
+    }
+
+    state->scan_state = response[5];
+    state->scan_progress = response[6];
+    state->scan_frequency_mhz = ((uint32_t)response[7] << 16) |
+                                ((uint32_t)response[8] << 8) |
+                                (uint32_t)response[9];
+    state->scan_symbol_rate_ks = read_u16_be(&response[10]);
+    state->scan_mode = response[12];
+    state->scan_tv_count = read_u16_be(&response[13]);
+    state->scan_radio_count = read_u16_be(&response[15]);
+    state->scan_next_poll = now + DEVICE_SCAN_POLL_SECONDS;
+
+    if (state->scan_state == 1U) {
+        snprintf(state->last_message, sizeof(state->last_message),
+                 "Scanning: %u%%, %u MHz, %u kSym/s, TV %u, radio %u",
+                 state->scan_progress,
+                 (unsigned)state->scan_frequency_mhz,
+                 (unsigned)state->scan_symbol_rate_ks,
+                 state->scan_tv_count, state->scan_radio_count);
+        printf("Receiver scan: %u%%, %u MHz, %u kSym/s, TV %u, radio %u.\\n",
+               state->scan_progress,
+               (unsigned)state->scan_frequency_mhz,
+               (unsigned)state->scan_symbol_rate_ks,
+               state->scan_tv_count, state->scan_radio_count);
+        return true;
+    }
+
+    if (state->scan_state != 0U) {
+        device_scan_mark_stopped(state, "Receiver reported an invalid scan state");
+        memset(tuning, 0, sizeof(*tuning));
+        return false;
+    }
+
+    printf("Receiver scan completed: TV %u, radio %u. Downloading lineup.\\n",
+           state->scan_tv_count, state->scan_radio_count);
+    state->scan_running = false;
+    snprintf(state->last_message, sizeof(state->last_message),
+             "Scan complete; downloading channel list");
+    SLEEP_MS(1000);
+
+    state->busy = false;
+    if (!device_refresh_channels(control, opt, channels, state)) {
+        state->last_message[sizeof(state->last_message) - 1U] = '\0';
+        memset(tuning, 0, sizeof(*tuning));
+        return false;
+    }
+    if (opt->device_scan_epg_after &&
+        !device_refresh_epg(control, opt, channels, epg, state, true)) {
+        memset(tuning, 0, sizeof(*tuning));
+        return false;
+    }
+
+    state->last_scan_success_utc = (int64_t)time(NULL);
+    state->scan_progress = 100U;
+    state->busy = false;
+    snprintf(state->last_action, sizeof(state->last_action), "scan");
+    snprintf(state->last_message, sizeof(state->last_message),
+             "Receiver scan complete: TV %u, radio %u; %zu EPG channels updated",
+             state->scan_tv_count, state->scan_radio_count,
+             state->last_epg_updated_channels);
+    state->next_channels_due = monotonic_seconds() +
+        (double)opt->device_channels_refresh_minutes * 60.0;
+    state->next_epg_due = monotonic_seconds() +
+        (double)opt->device_epg_refresh_minutes * 60.0;
+    state->next_scan_due = monotonic_seconds() +
+        (double)opt->device_scan_refresh_minutes * 60.0;
+    memset(tuning, 0, sizeof(*tuning));
+    return true;
+}
+
+static void device_update_state_free(device_update_state_t *state)
+{
+    memset(state, 0, sizeof(*state));
+}
+
+static void find_epg_now_next(const epg_list_t *epg,
+                              const char *channel_id,
+                              int64_t now,
+                              const epg_program_t **current,
+                              const epg_program_t **next)
+{
+    size_t i;
+    *current = NULL;
+    *next = NULL;
+    if (channel_id == NULL || *channel_id == '\0') {
+        return;
+    }
+    for (i = 0; i < epg->count; ++i) {
+        const epg_program_t *program = &epg->items[i];
+        if (strcmp(program->channel_id, channel_id) != 0) {
+            continue;
+        }
+        if (program->start_utc <= now && now < program->stop_utc) {
+            *current = program;
+        } else if (program->start_utc > now) {
+            *next = program;
+            if (*current != NULL || program->start_utc >= now) {
+                break;
+            }
+        }
+    }
+}
+
+
 static const channel_t *find_channel_by_lcn(const channel_list_t *list,
                                             uint32_t lcn)
 {
@@ -2473,10 +5275,10 @@ static bool same_transponder(const tuning_state_t *state,
            state->polarization == channel->polarization;
 }
 
-static bool tune_channel(socket_t control,
-                         const options_t *base_opt,
-                         const channel_t *channel,
-                         tuning_state_t *state)
+static tune_result_t tune_channel(socket_t control,
+                                  const options_t *base_opt,
+                                  const channel_t *channel,
+                                  tuning_state_t *state)
 {
     options_t tune_opt = *base_opt;
     uint8_t frame[FRAME_SIZE];
@@ -2501,11 +5303,17 @@ static bool tune_channel(socket_t control,
                (unsigned)channel->symbol_rate_ks,
                channel->polarization,
                (unsigned)channel->service_id);
+        if (base_opt->verbose && base_opt->tone == TONE_AUTO) {
+            const tone_mode_t resolved = resolve_tone_mode(&tune_opt);
+            printf("LNB tone auto resolved to %s for this transponder.\n",
+                   resolved == TONE_ON ? "ON" :
+                   resolved == TONE_OFF ? "OFF" : "AUTO");
+        }
         build_dvbs_tune(frame, &tune_opt);
         if (!tcp_command(control, frame, 2,
                          response, sizeof(response), base_opt->verbose)) {
             state->valid = false;
-            return false;
+            return TUNE_RESULT_CONTROL_ERROR;
         }
         SLEEP_MS(300);
     }
@@ -2514,11 +5322,15 @@ static bool tune_channel(socket_t control,
     if (!tcp_command(control, frame, 4,
                      response, sizeof(response), base_opt->verbose)) {
         state->valid = false;
-        return false;
+        return TUNE_RESULT_CONTROL_ERROR;
     }
-    if (!response_reports_lock(response, 4, "Channel tune")) {
-        state->valid = false;
-        return false;
+    {
+        const tune_result_t lock_result =
+            response_reports_lock(response, 4, "Channel tune");
+        if (lock_result != TUNE_RESULT_OK) {
+            state->valid = false;
+            return lock_result;
+        }
     }
 
     state->valid = true;
@@ -2528,7 +5340,7 @@ static bool tune_channel(socket_t control,
     state->service_id = channel->service_id;
 
     SLEEP_MS(base_opt->wait_ms);
-    return true;
+    return TUNE_RESULT_OK;
 }
 
 static int wait_socket_readable(socket_t sock, int timeout_ms)
@@ -2549,6 +5361,10 @@ static int wait_socket_readable(socket_t sock, int timeout_ms)
 
 typedef struct {
     socket_t socket;
+    uint64_t id;
+    char peer_host[128];
+    char peer_port[16];
+    double connected_at;
 #ifdef SORALINK_USE_OPENSSL
     SSL *ssl;
 #endif
@@ -2564,6 +5380,7 @@ typedef struct {
 typedef enum {
     HTTP_METHOD_GET = 0,
     HTTP_METHOD_HEAD,
+    HTTP_METHOD_POST,
     HTTP_METHOD_OPTIONS,
     HTTP_METHOD_OTHER
 } http_method_t;
@@ -2590,6 +5407,9 @@ typedef struct {
     uint8_t retry_flag;
     uint64_t blocks;
     uint64_t bytes_forwarded;
+    uint64_t total_bytes_forwarded;
+    double last_mbps;
+    double server_started;
     uint64_t timeouts;
     uint64_t bad_blocks;
     unsigned consecutive_timeouts;
@@ -2750,6 +5570,7 @@ static bool http_connection_send_text(http_connection_t *connection,
 static bool http_accept_connection(socket_t listener,
                                    const tls_server_t *tls,
                                    int timeout_ms,
+                                   uint64_t connection_id,
                                    http_connection_t *connection)
 {
     struct sockaddr_storage peer;
@@ -2762,6 +5583,15 @@ static bool http_accept_connection(socket_t listener,
         return false;
     }
     socket_set_timeout(connection->socket, timeout_ms);
+    connection->id = connection_id;
+    connection->connected_at = monotonic_seconds();
+    if (getnameinfo((const struct sockaddr *)&peer, peer_length,
+                    connection->peer_host, sizeof(connection->peer_host),
+                    connection->peer_port, sizeof(connection->peer_port),
+                    NI_NUMERICHOST | NI_NUMERICSERV) != 0) {
+        snprintf(connection->peer_host, sizeof(connection->peer_host), "unknown");
+        connection->peer_port[0] = '\0';
+    }
 
 #ifdef SORALINK_USE_OPENSSL
     if (tls->enabled) {
@@ -2856,11 +5686,29 @@ static socket_t create_http_listener(const char *bind_host,
     return SOCKET_INVALID;
 }
 
+static bool http_get_header(const char *request,
+                            const char *name,
+                            char *value,
+                            size_t value_capacity);
+
+static const char *http_request_body(const char *request)
+{
+    const char *body = strstr(request, "\r\n\r\n");
+    if (body != NULL) {
+        return body + 4;
+    }
+    body = strstr(request, "\n\n");
+    return body != NULL ? body + 2 : NULL;
+}
+
 static bool read_http_request(http_connection_t *connection,
                               char *request,
                               size_t capacity)
 {
     size_t used = 0;
+    size_t required = 0;
+    bool headers_complete = false;
+
     while (used + 1U < capacity) {
         const size_t remaining = capacity - used - 1U;
         const int amount = remaining > (size_t)INT_MAX ? INT_MAX : (int)remaining;
@@ -2871,8 +5719,35 @@ static bool read_http_request(http_connection_t *connection,
         }
         used += (size_t)result;
         request[used] = '\0';
-        if (strstr(request, "\r\n\r\n") != NULL ||
-            strstr(request, "\n\n") != NULL) {
+
+        if (!headers_complete) {
+            const char *body = http_request_body(request);
+            if (body != NULL) {
+                char length_text[64];
+                char transfer_encoding[64];
+                uint32_t content_length = 0;
+                const size_t header_bytes = (size_t)(body - request);
+                headers_complete = true;
+                if (http_get_header(request, "Transfer-Encoding",
+                                    transfer_encoding,
+                                    sizeof(transfer_encoding))) {
+                    return false;
+                }
+                if (http_get_header(request, "Content-Length",
+                                    length_text, sizeof(length_text))) {
+                    if (!parse_u32(length_text, &content_length) ||
+                        content_length > 8192U) {
+                        return false;
+                    }
+                }
+                if ((size_t)content_length > capacity - header_bytes - 1U) {
+                    return false;
+                }
+                required = header_bytes + (size_t)content_length;
+            }
+        }
+        if (headers_complete && used >= required) {
+            request[required] = '\0';
             return true;
         }
     }
@@ -2896,6 +5771,8 @@ static bool parse_http_request_line(const char *request,
         line->method = HTTP_METHOD_GET;
     } else if (method_length == 4U && memcmp(request, "HEAD", 4) == 0) {
         line->method = HTTP_METHOD_HEAD;
+    } else if (method_length == 4U && memcmp(request, "POST", 4) == 0) {
+        line->method = HTTP_METHOD_POST;
     } else if (method_length == 7U && memcmp(request, "OPTIONS", 7) == 0) {
         line->method = HTTP_METHOD_OPTIONS;
     } else {
@@ -3015,7 +5892,9 @@ static bool constant_time_equal(const char *left, const char *right)
     return difference == 0U;
 }
 
-static bool http_authorized(const char *request, const options_t *opt)
+static bool http_authorized_credentials(const char *request,
+                                        const char *user,
+                                        const char *password)
 {
     char credentials[1024];
     char encoded[1400];
@@ -3023,11 +5902,11 @@ static bool http_authorized(const char *request, const options_t *opt)
     char supplied[1500];
     int length;
 
-    if (opt->http_user == NULL) {
+    if (user == NULL) {
         return true;
     }
     length = snprintf(credentials, sizeof(credentials), "%s:%s",
-                      opt->http_user, opt->http_password);
+                      user, password);
     if (length < 0 || (size_t)length >= sizeof(credentials) ||
         base64_encode((const uint8_t *)credentials, (size_t)length,
                       encoded, sizeof(encoded)) == 0U) {
@@ -3039,6 +5918,23 @@ static bool http_authorized(const char *request, const options_t *opt)
         return false;
     }
     return constant_time_equal(expected, supplied);
+}
+
+static bool http_viewer_authorized(const char *request, const options_t *opt)
+{
+    return http_authorized_credentials(request,
+                                       opt->http_user,
+                                       opt->http_password);
+}
+
+static bool http_admin_authorized(const char *request, const options_t *opt)
+{
+    if (opt->admin_user != NULL) {
+        return http_authorized_credentials(request,
+                                           opt->admin_user,
+                                           opt->admin_password);
+    }
+    return http_viewer_authorized(request, opt);
 }
 
 static void send_http_response(http_connection_t *connection,
@@ -3078,6 +5974,103 @@ static void send_http_error(http_connection_t *connection,
                             int status,
                             const char *reason,
                             const char *message,
+                            bool head_only);
+
+static bool build_web_path(const options_t *opt,
+                           const char *filename,
+                           char *path,
+                           size_t path_capacity)
+{
+    const size_t root_length = strlen(opt->web_root != NULL ? opt->web_root : "web");
+    const bool has_separator = root_length > 0U &&
+        (opt->web_root[root_length - 1U] == '/' ||
+         opt->web_root[root_length - 1U] == '\\');
+    const int length = snprintf(path, path_capacity, "%s%s%s",
+                                opt->web_root != NULL ? opt->web_root : "web",
+                                has_separator ? "" : "/", filename);
+    return length > 0 && (size_t)length < path_capacity;
+}
+
+static void send_http_file(http_connection_t *connection,
+                           const char *path,
+                           const char *content_type,
+                           bool head_only,
+                           bool cacheable)
+{
+    FILE *file = fopen(path, "rb");
+    long file_length;
+    char header[1600];
+    int header_length;
+    uint8_t buffer[16384];
+
+    if (file == NULL) {
+        send_http_error(connection, 404, "Not Found",
+                        "The requested Web UI asset is missing. Check --web-root.\n",
+                        head_only);
+        return;
+    }
+    if (fseek(file, 0, SEEK_END) != 0 ||
+        (file_length = ftell(file)) < 0 ||
+        fseek(file, 0, SEEK_SET) != 0) {
+        fclose(file);
+        send_http_error(connection, 500, "Internal Server Error",
+                        "The requested Web UI asset could not be read.\n",
+                        head_only);
+        return;
+    }
+    header_length = snprintf(
+        header, sizeof(header),
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: %s\r\n"
+        "Content-Length: %ld\r\n"
+        "Cache-Control: %s\r\n"
+        "X-Content-Type-Options: nosniff\r\n"
+        "X-Frame-Options: DENY\r\n"
+        "Referrer-Policy: no-referrer\r\n"
+        "Permissions-Policy: camera=(), microphone=(), geolocation=()\r\n"
+        "Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'\r\n"
+        "Connection: close\r\n\r\n",
+        content_type, file_length,
+        cacheable ? "public, max-age=3600" : "no-store");
+    if (header_length <= 0 || (size_t)header_length >= sizeof(header) ||
+        !http_connection_send_all(connection,
+                                  (const uint8_t *)header,
+                                  (size_t)header_length)) {
+        fclose(file);
+        return;
+    }
+    if (!head_only) {
+        size_t amount;
+        while ((amount = fread(buffer, 1U, sizeof(buffer), file)) > 0U) {
+            if (!http_connection_send_all(connection, buffer, amount)) {
+                break;
+            }
+        }
+    }
+    fclose(file);
+}
+
+static void serve_web_asset(http_connection_t *connection,
+                            const options_t *opt,
+                            const char *filename,
+                            const char *content_type,
+                            bool head_only,
+                            bool cacheable)
+{
+    char path[2048];
+    if (!build_web_path(opt, filename, path, sizeof(path))) {
+        send_http_error(connection, 500, "Internal Server Error",
+                        "The Web UI path is too long.\n", head_only);
+        return;
+    }
+    send_http_file(connection, path, content_type, head_only, cacheable);
+}
+
+
+static void send_http_error(http_connection_t *connection,
+                            int status,
+                            const char *reason,
+                            const char *message,
                             bool head_only)
 {
     send_http_response(connection, status, reason,
@@ -3086,11 +6079,15 @@ static void send_http_error(http_connection_t *connection,
 }
 
 static void send_http_unauthorized(http_connection_t *connection,
+                                   const char *realm,
                                    bool head_only)
 {
+    char header[256];
+    snprintf(header, sizeof(header),
+             "WWW-Authenticate: Basic realm=\"%s\", charset=\"UTF-8\"\r\n",
+             realm);
     send_http_response(connection, 401, "Unauthorized",
-                       "text/plain; charset=utf-8",
-                       "WWW-Authenticate: Basic realm=\"SORALink\", charset=\"UTF-8\"\r\n",
+                       "text/plain; charset=utf-8", header,
                        "Authentication required.\n", head_only);
 }
 
@@ -3139,6 +6136,329 @@ static void string_buffer_free(string_buffer_t *buffer)
 {
     free(buffer->data);
     memset(buffer, 0, sizeof(*buffer));
+}
+
+
+static bool string_buffer_appendf(string_buffer_t *buffer,
+                                  const char *format,
+                                  ...)
+{
+    va_list args;
+    va_list copy;
+    int needed;
+
+    va_start(args, format);
+    va_copy(copy, args);
+    needed = vsnprintf(NULL, 0, format, copy);
+    va_end(copy);
+    if (needed < 0 || !string_buffer_reserve(buffer, (size_t)needed)) {
+        va_end(args);
+        return false;
+    }
+    vsnprintf(buffer->data + buffer->length,
+              buffer->capacity - buffer->length, format, args);
+    va_end(args);
+    buffer->length += (size_t)needed;
+    return true;
+}
+
+static int url_hex_value(char ch)
+{
+    if (ch >= '0' && ch <= '9') return ch - '0';
+    if (ch >= 'a' && ch <= 'f') return ch - 'a' + 10;
+    if (ch >= 'A' && ch <= 'F') return ch - 'A' + 10;
+    return -1;
+}
+
+static bool form_url_decode(const char *input,
+                            size_t input_length,
+                            char *output,
+                            size_t output_capacity)
+{
+    size_t in_pos = 0;
+    size_t out_pos = 0;
+    while (in_pos < input_length) {
+        unsigned char ch = (unsigned char)input[in_pos++];
+        if (ch == '+') {
+            ch = ' ';
+        } else if (ch == '%') {
+            int high;
+            int low;
+            if (in_pos + 1U >= input_length) {
+                return false;
+            }
+            high = url_hex_value(input[in_pos++]);
+            low = url_hex_value(input[in_pos++]);
+            if (high < 0 || low < 0) {
+                return false;
+            }
+            ch = (unsigned char)((high << 4) | low);
+        }
+        if (ch == '\0' || out_pos + 1U >= output_capacity) {
+            return false;
+        }
+        output[out_pos++] = (char)ch;
+    }
+    output[out_pos] = '\0';
+    return true;
+}
+
+static bool form_get_value(const char *body,
+                           const char *name,
+                           char *value,
+                           size_t value_capacity)
+{
+    const char *item = body;
+    const size_t name_length = strlen(name);
+    while (item != NULL && *item != '\0') {
+        const char *amp = strchr(item, '&');
+        const char *end = amp != NULL ? amp : item + strlen(item);
+        const char *equals = memchr(item, '=', (size_t)(end - item));
+        if (equals != NULL && (size_t)(equals - item) == name_length &&
+            memcmp(item, name, name_length) == 0) {
+            return form_url_decode(equals + 1, (size_t)(end - equals - 1),
+                                   value, value_capacity);
+        }
+        item = amp != NULL ? amp + 1 : NULL;
+    }
+    return false;
+}
+
+static void get_http_host(const char *request,
+                          const options_t *opt,
+                          char *host,
+                          size_t host_capacity);
+
+static bool admin_post_origin_allowed(const char *request,
+                                      const options_t *opt,
+                                      const tls_server_t *tls)
+{
+    char origin[1024];
+    char host[512];
+    char expected[1100];
+    char content_type[256];
+
+    if (!http_get_header(request, "Content-Type",
+                         content_type, sizeof(content_type)) ||
+        STRNCASECMP(content_type,
+                    "application/x-www-form-urlencoded", 33) != 0) {
+        return false;
+    }
+    if (!http_get_header(request, "Origin", origin, sizeof(origin))) {
+        return true;
+    }
+    get_http_host(request, opt, host, sizeof(host));
+    snprintf(expected, sizeof(expected), "%s://%s",
+             tls->enabled ? "https" : "http", host);
+    return strcmp(origin, expected) == 0;
+}
+
+static void send_http_redirect(http_connection_t *connection,
+                               const char *location)
+{
+    char headers[1200];
+    snprintf(headers, sizeof(headers), "Location: %s\r\n", location);
+    send_http_response(connection, 303, "See Other",
+                       "text/plain; charset=utf-8", headers,
+                       "Operation completed.\n", false);
+}
+
+static bool live_config_key(const char *key)
+{
+    return strcmp(key, "max_clients") == 0 ||
+           strcmp(key, "wait_ms") == 0 ||
+           strcmp(key, "timeout_ms") == 0 ||
+           strcmp(key, "missing_key") == 0 ||
+           strcmp(key, "device_channels_update") == 0 ||
+           strcmp(key, "device_epg_update") == 0 ||
+           strcmp(key, "device_channels_refresh_minutes") == 0 ||
+           strcmp(key, "device_epg_refresh_minutes") == 0 ||
+           strcmp(key, "device_scan_refresh_minutes") == 0 ||
+           strcmp(key, "device_scan_timeout_minutes") == 0 ||
+           strcmp(key, "device_scan_search_range") == 0 ||
+           strcmp(key, "device_scan_order_by") == 0 ||
+           strcmp(key, "device_scan_network") == 0 ||
+           strcmp(key, "device_scan_epg_after") == 0 ||
+           strcmp(key, "device_update_on_start") == 0;
+}
+
+static bool update_live_config_file(const options_t *opt)
+{
+    FILE *input;
+    FILE *output;
+    char temporary[1400];
+    char line[4096];
+    bool wrote_max = false;
+    bool wrote_wait = false;
+    bool wrote_timeout = false;
+    bool wrote_missing = false;
+    bool wrote_device_channels = false;
+    bool wrote_device_epg = false;
+    bool wrote_device_channels_minutes = false;
+    bool wrote_device_epg_minutes = false;
+    bool wrote_device_scan_minutes = false;
+    bool wrote_device_scan_timeout = false;
+    bool wrote_device_scan_range = false;
+    bool wrote_device_scan_order = false;
+    bool wrote_device_scan_network = false;
+    bool wrote_device_scan_epg = false;
+    bool wrote_device_start = false;
+
+    if (opt->config_path == NULL ||
+        snprintf(temporary, sizeof(temporary), "%s.tmp", opt->config_path) < 0 ||
+        strlen(temporary) + 1U >= sizeof(temporary)) {
+        return false;
+    }
+    input = fopen(opt->config_path, "rb");
+    if (input == NULL) {
+        return false;
+    }
+    output = fopen(temporary, "wb");
+    if (output == NULL) {
+        fclose(input);
+        return false;
+    }
+
+    while (fgets(line, sizeof(line), input) != NULL) {
+        char copy[4096];
+        char *text;
+        char *equals;
+        char *key;
+        snprintf(copy, sizeof(copy), "%s", line);
+        text = trim_config_text(copy);
+        equals = strchr(text, '=');
+        if (*text != '\0' && *text != '#' && *text != ';' &&
+            *text != '[' && equals != NULL) {
+            *equals = '\0';
+            key = trim_config_text(text);
+            normalize_config_key(key);
+            if (live_config_key(key)) {
+                if (strcmp(key, "max_clients") == 0) {
+                    fprintf(output, "max_clients=%u\n",
+                            (unsigned)opt->max_http_clients);
+                    wrote_max = true;
+                } else if (strcmp(key, "wait_ms") == 0) {
+                    fprintf(output, "wait_ms=%d\n", opt->wait_ms);
+                    wrote_wait = true;
+                } else if (strcmp(key, "timeout_ms") == 0) {
+                    fprintf(output, "timeout_ms=%d\n", opt->timeout_ms);
+                    wrote_timeout = true;
+                } else if (strcmp(key, "missing_key") == 0) {
+                    fprintf(output, "missing_key=%s\n",
+                            opt->missing_key_policy == MISSING_KEY_DROP ?
+                            "drop" : "pass");
+                    wrote_missing = true;
+                } else if (strcmp(key, "device_channels_update") == 0) {
+                    fprintf(output, "device_channels_update=%s\n",
+                            opt->device_channels_update ? "true" : "false");
+                    wrote_device_channels = true;
+                } else if (strcmp(key, "device_epg_update") == 0) {
+                    fprintf(output, "device_epg_update=%s\n",
+                            opt->device_epg_update ? "true" : "false");
+                    wrote_device_epg = true;
+                } else if (strcmp(key, "device_channels_refresh_minutes") == 0) {
+                    fprintf(output, "device_channels_refresh_minutes=%u\n",
+                            (unsigned)opt->device_channels_refresh_minutes);
+                    wrote_device_channels_minutes = true;
+                } else if (strcmp(key, "device_epg_refresh_minutes") == 0) {
+                    fprintf(output, "device_epg_refresh_minutes=%u\n",
+                            (unsigned)opt->device_epg_refresh_minutes);
+                    wrote_device_epg_minutes = true;
+                } else if (strcmp(key, "device_scan_refresh_minutes") == 0) {
+                    fprintf(output, "device_scan_refresh_minutes=%u\n",
+                            (unsigned)opt->device_scan_refresh_minutes);
+                    wrote_device_scan_minutes = true;
+                } else if (strcmp(key, "device_scan_timeout_minutes") == 0) {
+                    fprintf(output, "device_scan_timeout_minutes=%u\n",
+                            (unsigned)opt->device_scan_timeout_minutes);
+                    wrote_device_scan_timeout = true;
+                } else if (strcmp(key, "device_scan_search_range") == 0) {
+                    fprintf(output, "device_scan_search_range=%u\n",
+                            (unsigned)opt->device_scan_search_range);
+                    wrote_device_scan_range = true;
+                } else if (strcmp(key, "device_scan_order_by") == 0) {
+                    fprintf(output, "device_scan_order_by=%u\n",
+                            (unsigned)opt->device_scan_order_by);
+                    wrote_device_scan_order = true;
+                } else if (strcmp(key, "device_scan_network") == 0) {
+                    fprintf(output, "device_scan_network=%s\n",
+                            opt->device_scan_network ? "true" : "false");
+                    wrote_device_scan_network = true;
+                } else if (strcmp(key, "device_scan_epg_after") == 0) {
+                    fprintf(output, "device_scan_epg_after=%s\n",
+                            opt->device_scan_epg_after ? "true" : "false");
+                    wrote_device_scan_epg = true;
+                } else {
+                    fprintf(output, "device_update_on_start=%s\n",
+                            opt->device_update_on_start ? "true" : "false");
+                    wrote_device_start = true;
+                }
+                continue;
+            }
+        }
+        fputs(line, output);
+    }
+    if (!wrote_max) {
+        fprintf(output, "max_clients=%u\n", (unsigned)opt->max_http_clients);
+    }
+    if (!wrote_wait) {
+        fprintf(output, "wait_ms=%d\n", opt->wait_ms);
+    }
+    if (!wrote_timeout) {
+        fprintf(output, "timeout_ms=%d\n", opt->timeout_ms);
+    }
+    if (!wrote_missing) {
+        fprintf(output, "missing_key=%s\n",
+                opt->missing_key_policy == MISSING_KEY_DROP ? "drop" : "pass");
+    }
+    if (!wrote_device_channels)
+        fprintf(output, "device_channels_update=%s\n",
+                opt->device_channels_update ? "true" : "false");
+    if (!wrote_device_epg)
+        fprintf(output, "device_epg_update=%s\n",
+                opt->device_epg_update ? "true" : "false");
+    if (!wrote_device_channels_minutes)
+        fprintf(output, "device_channels_refresh_minutes=%u\n",
+                (unsigned)opt->device_channels_refresh_minutes);
+    if (!wrote_device_epg_minutes)
+        fprintf(output, "device_epg_refresh_minutes=%u\n",
+                (unsigned)opt->device_epg_refresh_minutes);
+    if (!wrote_device_scan_minutes)
+        fprintf(output, "device_scan_refresh_minutes=%u\n",
+                (unsigned)opt->device_scan_refresh_minutes);
+    if (!wrote_device_scan_timeout)
+        fprintf(output, "device_scan_timeout_minutes=%u\n",
+                (unsigned)opt->device_scan_timeout_minutes);
+    if (!wrote_device_scan_range)
+        fprintf(output, "device_scan_search_range=%u\n",
+                (unsigned)opt->device_scan_search_range);
+    if (!wrote_device_scan_order)
+        fprintf(output, "device_scan_order_by=%u\n",
+                (unsigned)opt->device_scan_order_by);
+    if (!wrote_device_scan_network)
+        fprintf(output, "device_scan_network=%s\n",
+                opt->device_scan_network ? "true" : "false");
+    if (!wrote_device_scan_epg)
+        fprintf(output, "device_scan_epg_after=%s\n",
+                opt->device_scan_epg_after ? "true" : "false");
+    if (!wrote_device_start)
+        fprintf(output, "device_update_on_start=%s\n",
+                opt->device_update_on_start ? "true" : "false");
+
+    if (ferror(input) || fflush(output) != 0 || fclose(output) != 0) {
+        fclose(input);
+        remove(temporary);
+        return false;
+    }
+    fclose(input);
+#ifdef _WIN32
+    remove(opt->config_path);
+#endif
+    if (rename(temporary, opt->config_path) != 0) {
+        remove(temporary);
+        return false;
+    }
+    return true;
 }
 
 static void sanitize_m3u_text(const char *input,
@@ -3271,7 +6591,7 @@ static size_t http_stream_client_count(const http_stream_t *stream)
 {
     size_t i;
     size_t count = 0;
-    for (i = 0; i < stream->max_clients; ++i) {
+    for (i = 0; i < HTTP_CLIENT_LIMIT; ++i) {
         if (stream->clients[i].socket != SOCKET_INVALID) {
             ++count;
         }
@@ -3283,7 +6603,7 @@ static bool http_stream_add_client(http_stream_t *stream,
                                    http_connection_t *connection)
 {
     size_t i;
-    for (i = 0; i < stream->max_clients; ++i) {
+    for (i = 0; i < HTTP_CLIENT_LIMIT; ++i) {
         if (stream->clients[i].socket == SOCKET_INVALID) {
             stream->clients[i] = *connection;
             http_connection_init(connection);
@@ -3296,9 +6616,34 @@ static bool http_stream_add_client(http_stream_t *stream,
 static void http_stream_close_clients(http_stream_t *stream)
 {
     size_t i;
-    for (i = 0; i < stream->max_clients; ++i) {
+    for (i = 0; i < HTTP_CLIENT_LIMIT; ++i) {
         http_connection_close(&stream->clients[i]);
     }
+}
+
+
+static bool http_stream_kick_client(http_stream_t *stream,
+                                    uint64_t client_id,
+                                    char *peer,
+                                    size_t peer_capacity)
+{
+    size_t i;
+    for (i = 0; i < HTTP_CLIENT_LIMIT; ++i) {
+        http_connection_t *client = &stream->clients[i];
+        if (client->socket != SOCKET_INVALID && client->id == client_id) {
+            if (peer != NULL && peer_capacity > 0U) {
+                if (client->peer_port[0] != '\0') {
+                    snprintf(peer, peer_capacity, "%s:%s",
+                             client->peer_host, client->peer_port);
+                } else {
+                    snprintf(peer, peer_capacity, "%s", client->peer_host);
+                }
+            }
+            http_connection_close(client);
+            return true;
+        }
+    }
+    return false;
 }
 
 static void http_stream_stop_if_idle(http_stream_t *stream)
@@ -3320,7 +6665,7 @@ static bool http_stream_send_to_clients(http_stream_t *stream,
 {
     size_t i;
     bool delivered = false;
-    for (i = 0; i < stream->max_clients; ++i) {
+    for (i = 0; i < HTTP_CLIENT_LIMIT; ++i) {
         http_connection_t *client = &stream->clients[i];
         if (client->socket == SOCKET_INVALID) {
             continue;
@@ -3460,6 +6805,7 @@ static stream_step_t http_stream_service(http_stream_t *stream,
     aligned_length = available - (available % TS_PACKET_SIZE);
     forwarded = forward_ts_http_clients(stream, reply + offset, aligned_length);
     stream->bytes_forwarded += forwarded;
+    stream->total_bytes_forwarded += forwarded;
     ++stream->blocks;
 
     if (monotonic_seconds() - stream->report_start >= 2.0) {
@@ -3468,6 +6814,7 @@ static stream_step_t http_stream_service(http_stream_t *stream,
         const double mbps = elapsed > 0.0
             ? (double)stream->bytes_forwarded * 8.0 / elapsed / 1000000.0
             : 0.0;
+        stream->last_mbps = mbps;
         printf("\rHTTP clients: %zu  Blocks: %llu  Output: %.2f Mbit/s  "
                "Timeouts: %llu  Bad: %llu  AES even/odd: %llu/%llu      ",
                http_stream_client_count(stream),
@@ -3516,6 +6863,343 @@ static void json_escape(const char *input, char *output, size_t capacity)
     }
     output[used] = '\0';
 }
+
+static bool string_buffer_append_json_string(string_buffer_t *buffer,
+                                             const char *text)
+{
+    const size_t input_length = strlen(text != NULL ? text : "");
+    const size_t capacity = input_length > (SIZE_MAX - 16U) / 2U ?
+                            0U : input_length * 2U + 16U;
+    char *escaped;
+    bool result;
+    if (capacity == 0U) {
+        return false;
+    }
+    escaped = (char *)malloc(capacity);
+    if (escaped == NULL) {
+        return false;
+    }
+    json_escape(text != NULL ? text : "", escaped, capacity);
+    result = string_buffer_append(buffer, "\"") &&
+             string_buffer_append(buffer, escaped) &&
+             string_buffer_append(buffer, "\"");
+    free(escaped);
+    return result;
+}
+
+static bool append_epg_summary_json(string_buffer_t *buffer,
+                                    const epg_program_t *program)
+{
+    if (program == NULL) {
+        return string_buffer_append(buffer, "null");
+    }
+    if (!string_buffer_appendf(buffer,
+            "{\"start\":%lld,\"stop\":%lld,\"title\":",
+            (long long)program->start_utc, (long long)program->stop_utc) ||
+        !string_buffer_append_json_string(buffer, program->title) ||
+        !string_buffer_append(buffer, ",\"subtitle\":") ||
+        !string_buffer_append_json_string(buffer, program->subtitle) ||
+        !string_buffer_append(buffer, ",\"category\":") ||
+        !string_buffer_append_json_string(buffer, program->category) ||
+        !string_buffer_append(buffer, "}")) {
+        return false;
+    }
+    return true;
+}
+
+static void serve_admin_api_status(http_connection_t *connection,
+                                   const http_stream_t *stream,
+                                   const channel_list_t *channels,
+                                   const epg_list_t *epg,
+                                   const options_t *opt,
+                                   const device_update_state_t *updates,
+                                   bool head_only)
+{
+    string_buffer_t body;
+    size_t i;
+    const int64_t now_utc = (int64_t)time(NULL);
+    const double monotonic_now = monotonic_seconds();
+    const uint64_t bad_packets = stream->bad_blocks +
+        stream->stats.invalid_packets + stream->stats.reserved_scrambling;
+
+    memset(&body, 0, sizeof(body));
+    if (!string_buffer_appendf(&body,
+        "{\"server_time\":%lld,\"uptime_seconds\":%llu,"
+        "\"online\":true,\"streaming\":%s,\"clients\":%zu,"
+        "\"max_clients\":%zu,\"data_rate_mbps\":%.3f,"
+        "\"total_bytes\":%llu,\"blocks\":%llu,\"timeouts\":%llu,"
+        "\"bad_blocks\":%llu,\"signal_metrics_available\":false,"
+        "\"current_channel\":",
+        (long long)now_utc,
+        (unsigned long long)(monotonic_now > stream->server_started ?
+            monotonic_now - stream->server_started : 0.0),
+        stream->channel != NULL ? "true" : "false",
+        http_stream_client_count(stream), stream->max_clients,
+        stream->last_mbps,
+        (unsigned long long)stream->total_bytes_forwarded,
+        (unsigned long long)stream->blocks,
+        (unsigned long long)stream->timeouts,
+        (unsigned long long)bad_packets)) {
+        goto overflow;
+    }
+
+    if (stream->channel == NULL) {
+        if (!string_buffer_append(&body, "null")) {
+            goto overflow;
+        }
+    } else {
+        if (!string_buffer_appendf(&body,
+            "{\"lcn\":%u,\"name\":",
+            (unsigned)stream->channel->lcn) ||
+            !string_buffer_append_json_string(&body, stream->channel->name) ||
+            !string_buffer_appendf(&body,
+            ",\"type\":\"%s\",\"frequency_mhz\":%u,"
+            "\"symbol_rate_ks\":%u,\"polarization\":\"%c\","
+            "\"service_id\":%u}",
+            stream->channel->type,
+            (unsigned)stream->channel->frequency_mhz,
+            (unsigned)stream->channel->symbol_rate_ks,
+            stream->channel->polarization,
+            (unsigned)stream->channel->service_id)) {
+            goto overflow;
+        }
+    }
+
+    if (!string_buffer_append(&body, ",\"channels\":[")) {
+        goto overflow;
+    }
+    for (i = 0; i < channels->count; ++i) {
+        const channel_t *channel = &channels->items[i];
+        const epg_program_t *current;
+        const epg_program_t *next;
+        find_epg_now_next(epg, channel->epg_id, now_utc, &current, &next);
+        if (i > 0U && !string_buffer_append(&body, ",")) {
+            goto overflow;
+        }
+        if (!string_buffer_appendf(&body, "{\"lcn\":%u,\"name\":",
+                                   (unsigned)channel->lcn) ||
+            !string_buffer_append_json_string(&body, channel->name) ||
+            !string_buffer_append(&body, ",\"type\":") ||
+            !string_buffer_append_json_string(&body, channel->type) ||
+            !string_buffer_appendf(&body,
+                ",\"service_id\":%u,\"frequency_mhz\":%u,"
+                "\"symbol_rate_ks\":%u,\"polarization\":\"%c\","
+                "\"prog_idx\":%u,\"ts_id\":%u,"
+                "\"fta\":%s,\"epg_id\":",
+                (unsigned)channel->service_id,
+                (unsigned)channel->frequency_mhz,
+                (unsigned)channel->symbol_rate_ks,
+                channel->polarization,
+                (unsigned)channel->program_index,
+                (unsigned)channel->transport_stream_id,
+                channel->fta ? "true" : "false") ||
+            !string_buffer_append_json_string(&body, channel->epg_id) ||
+            !string_buffer_appendf(&body, ",\"stream_url\":\"/channel/%u\",\"now\":",
+                                   (unsigned)channel->lcn) ||
+            !append_epg_summary_json(&body, current) ||
+            !string_buffer_append(&body, ",\"next\":") ||
+            !append_epg_summary_json(&body, next) ||
+            !string_buffer_append(&body, "}")) {
+            goto overflow;
+        }
+    }
+
+    if (!string_buffer_append(&body, "],\"viewers\":[")) {
+        goto overflow;
+    }
+    {
+        bool first = true;
+        for (i = 0; i < HTTP_CLIENT_LIMIT; ++i) {
+            const http_connection_t *client = &stream->clients[i];
+            const uint64_t connected_seconds =
+                client->socket != SOCKET_INVALID &&
+                monotonic_now > client->connected_at ?
+                (uint64_t)(monotonic_now - client->connected_at) : 0U;
+            if (client->socket == SOCKET_INVALID) {
+                continue;
+            }
+            if (!first && !string_buffer_append(&body, ",")) {
+                goto overflow;
+            }
+            first = false;
+            if (!string_buffer_appendf(&body, "{\"id\":%llu,\"host\":",
+                                       (unsigned long long)client->id) ||
+                !string_buffer_append_json_string(&body, client->peer_host) ||
+                !string_buffer_append(&body, ",\"port\":") ||
+                !string_buffer_append_json_string(&body, client->peer_port) ||
+                !string_buffer_appendf(&body,
+                    ",\"connected_seconds\":%llu}",
+                    (unsigned long long)connected_seconds)) {
+                goto overflow;
+            }
+        }
+    }
+
+    if (!string_buffer_appendf(&body,
+        "],\"config\":{\"wait_ms\":%d,\"timeout_ms\":%d,"
+        "\"missing_key\":\"%s\",\"config_active\":%s,"
+        "\"viewer_auth\":%s,\"admin_auth\":%s,\"channels_path\":",
+        opt->wait_ms, opt->timeout_ms,
+        opt->missing_key_policy == MISSING_KEY_DROP ? "drop" : "pass",
+        opt->config_path != NULL ? "true" : "false",
+        opt->http_user != NULL ? "true" : "false",
+        opt->admin_user != NULL ? "true" : "false") ||
+        !string_buffer_append_json_string(&body, opt->channels_path) ||
+        !string_buffer_append(&body, ",\"config_path\":") ||
+        !string_buffer_append_json_string(&body,
+            opt->config_path != NULL ? opt->config_path : "") ||
+        !string_buffer_append(&body, ",\"web_root\":") ||
+        !string_buffer_append_json_string(&body,
+            opt->web_root != NULL ? opt->web_root : "") ||
+        !string_buffer_append(&body, ",\"epg_path\":") ||
+        !string_buffer_append_json_string(&body,
+            opt->epg_path != NULL ? opt->epg_path : "") ||
+        !string_buffer_appendf(&body,
+            ",\"epg_update\":%s,\"epg_update_timeout_ms\":%d,\"epg_url\":",
+            opt->epg_update ? "true" : "false",
+            opt->epg_update_timeout_ms) ||
+        !string_buffer_append_json_string(&body,
+            opt->epg_url != NULL ? opt->epg_url : "") ||
+        !string_buffer_appendf(&body,
+            ",\"device_update_on_start\":%s,"
+            "\"device_scan_network\":%s,"
+            "\"device_scan_epg_after\":%s,"
+            "\"device_scan_timeout_minutes\":%u,"
+            "\"device_scan_search_range\":%u,"
+            "\"device_scan_order_by\":%u",
+            opt->device_update_on_start ? "true" : "false",
+            opt->device_scan_network ? "true" : "false",
+            opt->device_scan_epg_after ? "true" : "false",
+            (unsigned)opt->device_scan_timeout_minutes,
+            (unsigned)opt->device_scan_search_range,
+            (unsigned)opt->device_scan_order_by) ||
+        !string_buffer_appendf(&body,
+            "},\"epg\":{\"programmes\":%zu,\"loaded_utc\":%lld},"
+            "\"device_updates\":{\"busy\":%s,"
+            "\"channels_enabled\":%s,\"epg_enabled\":%s,"
+            "\"channels_refresh_minutes\":%u,\"epg_refresh_minutes\":%u,"
+            "\"last_channels_attempt_utc\":%lld,\"last_channels_success_utc\":%lld,"
+            "\"last_epg_attempt_utc\":%lld,\"last_epg_success_utc\":%lld,"
+            "\"epg_updated_channels\":%zu,\"epg_skipped_channels\":%zu,"
+            "\"epg_failed_channels\":%zu,"
+            "\"scan_running\":%s,\"scan_progress\":%u,"
+            "\"scan_state\":%u,\"scan_frequency_mhz\":%u,"
+            "\"scan_symbol_rate_ks\":%u,\"scan_mode\":%u,"
+            "\"scan_tv_count\":%u,\"scan_radio_count\":%u,"
+            "\"scan_refresh_minutes\":%u,"
+            "\"last_scan_attempt_utc\":%lld,"
+            "\"last_scan_success_utc\":%lld,\"last_action\":",
+            epg->count, (long long)epg->loaded_utc,
+            updates->busy ? "true" : "false",
+            opt->device_channels_update ? "true" : "false",
+            opt->device_epg_update ? "true" : "false",
+            (unsigned)opt->device_channels_refresh_minutes,
+            (unsigned)opt->device_epg_refresh_minutes,
+            (long long)updates->last_channels_attempt_utc,
+            (long long)updates->last_channels_success_utc,
+            (long long)updates->last_epg_attempt_utc,
+            (long long)updates->last_epg_success_utc,
+            updates->last_epg_updated_channels,
+            updates->last_epg_skipped_channels,
+            updates->last_epg_failed_channels,
+            updates->scan_running ? "true" : "false",
+            updates->scan_progress,
+            updates->scan_state,
+            (unsigned)updates->scan_frequency_mhz,
+            (unsigned)updates->scan_symbol_rate_ks,
+            updates->scan_mode,
+            updates->scan_tv_count,
+            updates->scan_radio_count,
+            (unsigned)opt->device_scan_refresh_minutes,
+            (long long)updates->last_scan_attempt_utc,
+            (long long)updates->last_scan_success_utc) ||
+        !string_buffer_append_json_string(&body, updates->last_action) ||
+        !string_buffer_append(&body, ",\"last_message\":") ||
+        !string_buffer_append_json_string(&body, updates->last_message) ||
+        !string_buffer_append(&body, "}}\n")) {
+        goto overflow;
+    }
+
+    send_http_response(connection, 200, "OK",
+                       "application/json; charset=utf-8",
+                       "X-Content-Type-Options: nosniff\r\n",
+                       body.data != NULL ? body.data : "{}", head_only);
+    string_buffer_free(&body);
+    return;
+
+overflow:
+    string_buffer_free(&body);
+    send_http_error(connection, 500, "Internal Server Error",
+                    "Could not build dashboard status.\n", head_only);
+}
+
+static void serve_admin_epg_api(http_connection_t *connection,
+                                const channel_list_t *channels,
+                                const epg_list_t *epg,
+                                uint32_t lcn,
+                                bool head_only)
+{
+    const channel_t *channel = find_channel_by_lcn(channels, lcn);
+    string_buffer_t body;
+    const int64_t now_utc = (int64_t)time(NULL);
+    size_t i;
+    size_t count = 0U;
+
+    if (channel == NULL) {
+        send_http_error(connection, 404, "Not Found",
+                        "Unknown channel number.\n", head_only);
+        return;
+    }
+    memset(&body, 0, sizeof(body));
+    if (!string_buffer_append(&body, "{\"lcn\":") ||
+        !string_buffer_appendf(&body, "%u,\"channel\":",
+                               (unsigned)channel->lcn) ||
+        !string_buffer_append_json_string(&body, channel->name) ||
+        !string_buffer_append(&body, ",\"programmes\":[")) {
+        goto overflow;
+    }
+    for (i = 0; i < epg->count && count < 100U; ++i) {
+        const epg_program_t *program = &epg->items[i];
+        if (strcmp(program->channel_id, channel->epg_id) != 0 ||
+            program->stop_utc < now_utc - 21600LL ||
+            program->start_utc > now_utc + 172800LL) {
+            continue;
+        }
+        if (count > 0U && !string_buffer_append(&body, ",")) {
+            goto overflow;
+        }
+        if (!string_buffer_appendf(&body,
+                "{\"start\":%lld,\"stop\":%lld,\"title\":",
+                (long long)program->start_utc,
+                (long long)program->stop_utc) ||
+            !string_buffer_append_json_string(&body, program->title) ||
+            !string_buffer_append(&body, ",\"subtitle\":") ||
+            !string_buffer_append_json_string(&body, program->subtitle) ||
+            !string_buffer_append(&body, ",\"description\":") ||
+            !string_buffer_append_json_string(&body, program->description) ||
+            !string_buffer_append(&body, ",\"category\":") ||
+            !string_buffer_append_json_string(&body, program->category) ||
+            !string_buffer_append(&body, "}")) {
+            goto overflow;
+        }
+        ++count;
+    }
+    if (!string_buffer_append(&body, "]}\n")) {
+        goto overflow;
+    }
+    send_http_response(connection, 200, "OK",
+                       "application/json; charset=utf-8",
+                       "X-Content-Type-Options: nosniff\r\n",
+                       body.data != NULL ? body.data : "{}", head_only);
+    string_buffer_free(&body);
+    return;
+
+overflow:
+    string_buffer_free(&body);
+    send_http_error(connection, 500, "Internal Server Error",
+                    "Could not build EPG response.\n", head_only);
+}
+
 
 static void serve_status(http_connection_t *connection,
                          const http_stream_t *stream,
@@ -3570,19 +7254,33 @@ static bool send_stream_headers(http_connection_t *connection)
         "Connection: close\r\n\r\n");
 }
 
-static bool recover_http_control(socket_t *control,
-                                 const options_t *opt,
-                                 const channel_t *channel,
-                                 tuning_state_t *tuning)
+static tune_result_t recover_http_control(socket_t *control,
+                                          const options_t *opt,
+                                          const channel_t *channel,
+                                          tuning_state_t *tuning)
 {
+    tune_result_t result = TUNE_RESULT_OK;
+
     if (!reconnect_control_session(control, opt)) {
-        return false;
+        return TUNE_RESULT_CONTROL_ERROR;
     }
     memset(tuning, 0, sizeof(*tuning));
     if (!configure_satellite(*control, opt)) {
-        return false;
+        if (*control != SOCKET_INVALID) {
+            CLOSESOCKET(*control);
+            *control = SOCKET_INVALID;
+        }
+        return TUNE_RESULT_CONTROL_ERROR;
     }
-    return channel == NULL || tune_channel(*control, opt, channel, tuning);
+    if (channel != NULL) {
+        result = tune_channel(*control, opt, channel, tuning);
+        if (result == TUNE_RESULT_CONTROL_ERROR &&
+            *control != SOCKET_INVALID) {
+            CLOSESOCKET(*control);
+            *control = SOCKET_INVALID;
+        }
+    }
+    return result;
 }
 
 static void print_server_url(const options_t *opt,
@@ -3601,42 +7299,418 @@ static void print_server_url(const options_t *opt,
            host, (unsigned)opt->http_port, path);
 }
 
-static int run_http_server(socket_t *control, const options_t *opt)
+
+static bool parse_u64_decimal(const char *text, uint64_t *value)
+{
+    char *end = NULL;
+    unsigned long long parsed;
+    if (text == NULL || *text == '\0' || *text == '-') {
+        return false;
+    }
+    errno = 0;
+    parsed = strtoull(text, &end, 10);
+    if (errno != 0 || end == text || *end != '\0') {
+        return false;
+    }
+    *value = (uint64_t)parsed;
+    return true;
+}
+
+static void serve_admin_page(http_connection_t *connection,
+                             const http_stream_t *stream,
+                             const channel_list_t *channels,
+                             const options_t *opt,
+                             const tls_server_t *tls,
+                             bool head_only)
+{
+    (void)stream;
+    (void)channels;
+    (void)tls;
+    serve_web_asset(connection, opt, "index.html",
+                    "text/html; charset=utf-8", head_only, false);
+}
+
+static void handle_admin_post(http_connection_t *connection,
+                              const char *path,
+                              const char *request,
+                              http_stream_t *stream,
+                              channel_list_t *channels,
+                              epg_list_t *epg,
+                              options_t *opt,
+                              socket_t *control,
+                              tuning_state_t *tuning,
+                              device_update_state_t *updates,
+                              const tls_server_t *tls)
+{
+    const char *body = http_request_body(request);
+    if (body == NULL || !admin_post_origin_allowed(request, opt, tls)) {
+        send_http_error(connection, 400, "Bad Request",
+                        "Invalid administration form request.\n", false);
+        return;
+    }
+
+    if (strcmp(path, "/admin/kick") == 0) {
+        char value[64];
+        char peer[256] = "viewer";
+        uint64_t id;
+        if (!form_get_value(body, "id", value, sizeof(value)) ||
+            !parse_u64_decimal(value, &id)) {
+            send_http_error(connection, 400, "Bad Request",
+                            "A valid viewer ID is required.\n", false);
+            return;
+        }
+        if (!http_stream_kick_client(stream, id, peer, sizeof(peer))) {
+            send_http_error(connection, 404, "Not Found",
+                            "That viewer is no longer connected.\n", false);
+            return;
+        }
+        printf("Administrator disconnected client %llu (%s).\n",
+               (unsigned long long)id, peer);
+        send_http_redirect(connection, "/admin/");
+        return;
+    }
+
+    if (strcmp(path, "/admin/kick-all") == 0) {
+        http_stream_close_clients(stream);
+        http_stream_stop_if_idle(stream);
+        printf("Administrator disconnected all viewers.\n");
+        send_http_redirect(connection, "/admin/");
+        return;
+    }
+
+    if (strcmp(path, "/admin/reload") == 0) {
+        channel_list_t replacement;
+        epg_list_t epg_replacement;
+        if (http_stream_client_count(stream) != 0U) {
+            send_http_error(connection, 409, "Conflict",
+                            "Disconnect viewers before reloading the channel list.\n",
+                            false);
+            return;
+        }
+        if (!load_channel_list(opt->channels_path, &replacement)) {
+            send_http_error(connection, 500, "Internal Server Error",
+                            "The channel list could not be reloaded.\n", false);
+            return;
+        }
+        if (opt->epg_update && !update_epg_on_start(opt)) {
+            free_channel_list(&replacement);
+            send_http_error(connection, 502, "Bad Gateway",
+                            "The configured EPG download failed.\n", false);
+            return;
+        }
+        if (!load_epg_file(opt->epg_path, &epg_replacement)) {
+            free_channel_list(&replacement);
+            send_http_error(connection, 500, "Internal Server Error",
+                            "The EPG could not be reloaded.\n", false);
+            return;
+        }
+        free_channel_list(channels);
+        free_epg_list(epg);
+        *channels = replacement;
+        *epg = epg_replacement;
+        send_http_redirect(connection, "/admin/");
+        return;
+    }
+
+    if (strcmp(path, "/admin/reload-epg") == 0) {
+        epg_list_t replacement;
+        if (opt->epg_update && !update_epg_on_start(opt)) {
+            send_http_error(connection, 502, "Bad Gateway",
+                            "The configured EPG download failed.\n", false);
+            return;
+        }
+        if (!load_epg_file(opt->epg_path, &replacement)) {
+            send_http_error(connection, 500, "Internal Server Error",
+                            "The EPG could not be reloaded.\n", false);
+            return;
+        }
+        free_epg_list(epg);
+        *epg = replacement;
+        send_http_redirect(connection, "/admin/");
+        return;
+    }
+
+    if (strcmp(path, "/admin/device/update-channels") == 0 ||
+        strcmp(path, "/admin/device/update-epg") == 0 ||
+        strcmp(path, "/admin/device/update-all") == 0) {
+        const bool do_channels = strcmp(path, "/admin/device/update-epg") != 0;
+        const bool do_epg = strcmp(path, "/admin/device/update-channels") != 0;
+        bool ok = true;
+        if (http_stream_client_count(stream) != 0U) {
+            send_http_error(connection, 409, "Conflict",
+                            "Device data can only be refreshed while no viewers are connected.\n",
+                            false);
+            return;
+        }
+        http_stream_stop_if_idle(stream);
+        if (do_channels)
+            ok = device_refresh_channels(control, opt, channels, updates);
+        if (ok && do_epg)
+            ok = device_refresh_epg(control, opt, channels, epg, updates, true);
+        memset(tuning, 0, sizeof(*tuning));
+        if (!ok) {
+            send_http_error(connection, 502, "Bad Gateway",
+                            updates->last_message, false);
+            return;
+        }
+        send_http_redirect(connection, "/admin/");
+        return;
+    }
+
+    if (strcmp(path, "/admin/device/scan") == 0) {
+        if (http_stream_client_count(stream) != 0U) {
+            send_http_error(connection, 409, "Conflict",
+                            "Disconnect viewers before starting a receiver scan.\\n",
+                            false);
+            return;
+        }
+        if (updates->busy || updates->scan_running) {
+            send_http_error(connection, 409, "Conflict",
+                            "Receiver maintenance is already running.\\n", false);
+            return;
+        }
+        http_stream_stop_if_idle(stream);
+        memset(tuning, 0, sizeof(*tuning));
+        if (!device_start_scan(control, opt, updates)) {
+            send_http_error(connection, 502, "Bad Gateway",
+                            updates->last_message, false);
+            return;
+        }
+        updates->next_scan_due = monotonic_seconds() +
+            (double)opt->device_scan_refresh_minutes * 60.0;
+        send_http_redirect(connection, "/admin/#settings");
+        return;
+    }
+
+    if (strcmp(path, "/admin/device/scan-cancel") == 0) {
+        if (!updates->scan_running) {
+            send_http_error(connection, 409, "Conflict",
+                            "No receiver scan is running.\\n", false);
+            return;
+        }
+        (void)device_cancel_scan(control, opt, updates);
+        memset(tuning, 0, sizeof(*tuning));
+        send_http_redirect(connection, "/admin/#settings");
+        return;
+    }
+
+    if (strcmp(path, "/admin/settings") == 0) {
+        char max_text[32];
+        char wait_text[32];
+        char timeout_text[32];
+        char missing_text[32];
+        char persist_text[8];
+        char device_channels_text[8];
+        char device_epg_text[8];
+        char device_start_text[8];
+        char device_channels_minutes_text[32];
+        char device_epg_minutes_text[32];
+        char device_scan_minutes_text[32];
+        char device_scan_timeout_text[32];
+        char device_scan_range_text[32];
+        char device_scan_order_text[32];
+        char device_scan_network_text[8];
+        char device_scan_epg_text[8];
+        uint32_t max_clients;
+        uint32_t wait_ms;
+        uint32_t timeout_ms;
+        uint32_t device_channels_minutes;
+        uint32_t device_epg_minutes;
+        uint32_t device_scan_minutes;
+        uint32_t device_scan_timeout;
+        uint32_t device_scan_range;
+        uint32_t device_scan_order;
+        const size_t active = http_stream_client_count(stream);
+        const bool persist = form_get_value(body, "persist", persist_text,
+                                             sizeof(persist_text)) &&
+                             strcmp(persist_text, "1") == 0;
+
+        if (!form_get_value(body, "max_clients", max_text, sizeof(max_text)) ||
+            !form_get_value(body, "wait_ms", wait_text, sizeof(wait_text)) ||
+            !form_get_value(body, "timeout_ms", timeout_text, sizeof(timeout_text)) ||
+            !form_get_value(body, "missing_key", missing_text, sizeof(missing_text)) ||
+            !form_get_value(body, "device_channels_update", device_channels_text, sizeof(device_channels_text)) ||
+            !form_get_value(body, "device_epg_update", device_epg_text, sizeof(device_epg_text)) ||
+            !form_get_value(body, "device_update_on_start", device_start_text, sizeof(device_start_text)) ||
+            !form_get_value(body, "device_channels_refresh_minutes", device_channels_minutes_text, sizeof(device_channels_minutes_text)) ||
+            !form_get_value(body, "device_epg_refresh_minutes", device_epg_minutes_text, sizeof(device_epg_minutes_text)) ||
+            !form_get_value(body, "device_scan_refresh_minutes", device_scan_minutes_text, sizeof(device_scan_minutes_text)) ||
+            !form_get_value(body, "device_scan_timeout_minutes", device_scan_timeout_text, sizeof(device_scan_timeout_text)) ||
+            !form_get_value(body, "device_scan_search_range", device_scan_range_text, sizeof(device_scan_range_text)) ||
+            !form_get_value(body, "device_scan_order_by", device_scan_order_text, sizeof(device_scan_order_text)) ||
+            !form_get_value(body, "device_scan_network", device_scan_network_text, sizeof(device_scan_network_text)) ||
+            !form_get_value(body, "device_scan_epg_after", device_scan_epg_text, sizeof(device_scan_epg_text)) ||
+            !parse_u32(max_text, &max_clients) || max_clients == 0U ||
+            max_clients > HTTP_CLIENT_LIMIT || max_clients < active ||
+            !parse_u32(wait_text, &wait_ms) || wait_ms > 60000U ||
+            !parse_u32(timeout_text, &timeout_ms) || timeout_ms < 100U ||
+            timeout_ms > 60000U ||
+            !parse_u32(device_channels_minutes_text, &device_channels_minutes) ||
+            device_channels_minutes > 10080U ||
+            !parse_u32(device_epg_minutes_text, &device_epg_minutes) ||
+            device_epg_minutes > 10080U ||
+            !parse_u32(device_scan_minutes_text, &device_scan_minutes) ||
+            device_scan_minutes > 10080U ||
+            !parse_u32(device_scan_timeout_text, &device_scan_timeout) ||
+            device_scan_timeout < 1U || device_scan_timeout > 120U ||
+            !parse_u32(device_scan_range_text, &device_scan_range) ||
+            device_scan_range > 7U ||
+            !parse_u32(device_scan_order_text, &device_scan_order) ||
+            device_scan_order > 3U ||
+            (strcmp(device_scan_network_text, "0") != 0 && strcmp(device_scan_network_text, "1") != 0) ||
+            (strcmp(device_scan_epg_text, "0") != 0 && strcmp(device_scan_epg_text, "1") != 0) ||
+            (strcmp(device_channels_text, "0") != 0 && strcmp(device_channels_text, "1") != 0) ||
+            (strcmp(device_epg_text, "0") != 0 && strcmp(device_epg_text, "1") != 0) ||
+            (strcmp(device_start_text, "0") != 0 && strcmp(device_start_text, "1") != 0) ||
+            (strcmp(missing_text, "pass") != 0 &&
+             strcmp(missing_text, "drop") != 0)) {
+            send_http_error(connection, 400, "Bad Request",
+                            "One or more live settings are invalid. The client limit cannot be below the number of connected viewers.\n",
+                            false);
+            return;
+        }
+
+        if (persist && opt->config_path == NULL) {
+            send_http_error(connection, 400, "Bad Request",
+                            "No --config file is active, so the settings cannot be persisted.\n",
+                            false);
+            return;
+        }
+
+        opt->max_http_clients = max_clients;
+        opt->wait_ms = (int)wait_ms;
+        opt->timeout_ms = (int)timeout_ms;
+        opt->missing_key_policy = strcmp(missing_text, "drop") == 0 ?
+                                  MISSING_KEY_DROP : MISSING_KEY_PASS;
+        opt->device_channels_update = strcmp(device_channels_text, "1") == 0;
+        opt->device_epg_update = strcmp(device_epg_text, "1") == 0;
+        opt->device_update_on_start = strcmp(device_start_text, "1") == 0;
+        opt->device_channels_refresh_minutes = device_channels_minutes;
+        opt->device_epg_refresh_minutes = device_epg_minutes;
+        opt->device_scan_refresh_minutes = device_scan_minutes;
+        opt->device_scan_timeout_minutes = device_scan_timeout;
+        opt->device_scan_search_range = device_scan_range;
+        opt->device_scan_order_by = device_scan_order;
+        opt->device_scan_network = strcmp(device_scan_network_text, "1") == 0;
+        opt->device_scan_epg_after = strcmp(device_scan_epg_text, "1") == 0;
+        updates->next_channels_due = monotonic_seconds() +
+            (double)device_channels_minutes * 60.0;
+        updates->next_epg_due = monotonic_seconds() +
+            (double)device_epg_minutes * 60.0;
+        updates->next_scan_due = monotonic_seconds() +
+            (double)device_scan_minutes * 60.0;
+        stream->max_clients = (size_t)max_clients;
+        stream->keys.missing_policy = opt->missing_key_policy;
+
+        if (persist) {
+            if (!update_live_config_file(opt)) {
+                send_http_error(connection, 500, "Internal Server Error",
+                                "The settings were applied in memory but could not be written to the config file.\n",
+                                false);
+                return;
+            }
+        }
+        send_http_redirect(connection, "/admin/");
+        return;
+    }
+
+    send_http_error(connection, 404, "Not Found",
+                    "Unknown administration action.\n", false);
+}
+
+static int run_http_server(socket_t *control, options_t *opt)
 {
     channel_list_t channels;
+    epg_list_t epg;
     tuning_state_t tuning;
     socket_t listener = SOCKET_INVALID;
     endpoint_t bound_endpoint;
     tls_server_t tls;
     http_stream_t stream;
+    device_update_state_t updates;
     double last_heartbeat = monotonic_seconds();
+    uint64_t next_connection_id = 1U;
     int result = EXIT_SUCCESS;
     size_t i;
 
     memset(&tuning, 0, sizeof(tuning));
+    memset(&epg, 0, sizeof(epg));
     memset(&stream, 0, sizeof(stream));
+    memset(&updates, 0, sizeof(updates));
+    snprintf(updates.last_message, sizeof(updates.last_message), "No device update has run yet");
     stream.dongle_udp = SOCKET_INVALID;
     stream.max_clients = (size_t)opt->max_http_clients;
     stream.report_start = monotonic_seconds();
+    stream.server_started = stream.report_start;
     for (i = 0; i < HTTP_CLIENT_LIMIT; ++i) {
         http_connection_init(&stream.clients[i]);
     }
     stream_keys_init(&stream.keys, opt);
 
+    memset(&channels, 0, sizeof(channels));
     if (!load_channel_list(opt->channels_path, &channels)) {
+        if (!(opt->device_channels_update && opt->device_update_on_start) ||
+            !device_refresh_channels(control, opt, &channels, &updates)) {
+            device_update_state_free(&updates);
+            return EXIT_FAILURE;
+        }
+    } else if (opt->device_channels_update && opt->device_update_on_start) {
+        if (!device_refresh_channels(control, opt, &channels, &updates)) {
+            fprintf(stderr,
+                    "Warning: native channel update failed during startup; "
+                    "continuing with the existing local channel list.\n");
+        }
+    }
+    if (opt->epg_update && !update_epg_on_start(opt)) {
+        fprintf(stderr,
+                "Warning: startup EPG update did not complete; continuing with the existing local file.\n");
+    }
+    if (!load_epg_file(opt->epg_path, &epg)) {
+        free_epg_list(&epg);
+        free_channel_list(&channels);
+        device_update_state_free(&updates);
         return EXIT_FAILURE;
     }
+    if (opt->device_epg_update && opt->device_update_on_start &&
+        !device_refresh_epg(control, opt, &channels, &epg, &updates, true)) {
+        fprintf(stderr, "Warning: native EPG update failed during startup.\n");
+    }
+    updates.next_channels_due = monotonic_seconds() +
+        (double)opt->device_channels_refresh_minutes * 60.0;
+    updates.next_epg_due = monotonic_seconds() +
+        (double)opt->device_epg_refresh_minutes * 60.0;
+    updates.next_scan_due = monotonic_seconds() +
+        (double)opt->device_scan_refresh_minutes * 60.0;
+
+    memset(&tuning, 0, sizeof(tuning));
+
+    if (*control == SOCKET_INVALID &&
+        !reconnect_control_session(control, opt)) {
+        fprintf(stderr,
+                "Could not restore device control after startup maintenance.\n");
+        free_epg_list(&epg);
+        free_channel_list(&channels);
+        device_update_state_free(&updates);
+        return EXIT_FAILURE;
+    }
+
     if (!resolve_endpoint(opt->device_ip, opt->stream_port,
                           SOCK_DGRAM, false, &stream.dongle_endpoint)) {
+        free_epg_list(&epg);
         free_channel_list(&channels);
+        device_update_state_free(&updates);
         return EXIT_FAILURE;
     }
     if (!configure_satellite(*control, opt)) {
+        free_epg_list(&epg);
         free_channel_list(&channels);
+        device_update_state_free(&updates);
         return EXIT_FAILURE;
     }
     if (!tls_server_init(&tls, opt)) {
+        free_epg_list(&epg);
         free_channel_list(&channels);
+        device_update_state_free(&updates);
         return EXIT_FAILURE;
     }
 
@@ -3644,7 +7718,22 @@ static int run_http_server(socket_t *control, const options_t *opt)
                                     &bound_endpoint);
     if (listener == SOCKET_INVALID) {
         tls_server_cleanup(&tls);
+        free_epg_list(&epg);
         free_channel_list(&channels);
+        device_update_state_free(&updates);
+        return EXIT_FAILURE;
+    }
+
+    if (opt->web_ui && !endpoint_is_loopback(&bound_endpoint) &&
+        opt->admin_user == NULL && opt->http_user == NULL) {
+        fprintf(stderr,
+                "The administration Web UI may not be exposed beyond loopback "
+                "without --admin-user/--admin-password or viewer HTTP credentials.\n");
+        CLOSESOCKET(listener);
+        tls_server_cleanup(&tls);
+        free_epg_list(&epg);
+        free_channel_list(&channels);
+        device_update_state_free(&updates);
         return EXIT_FAILURE;
     }
 
@@ -3655,10 +7744,32 @@ static int run_http_server(socket_t *control, const options_t *opt)
     print_server_url(opt, &tls, "/tv.m3u");
     print_server_url(opt, &tls, "/radio.m3u");
     print_server_url(opt, &tls, "/status.json");
+    if (opt->web_ui) {
+        printf("Administration Web UI:\n");
+        print_server_url(opt, &tls, "/admin/");
+        printf("Web assets: %s\n", opt->web_root);
+        printf("EPG source: %s (%zu programmes)\n",
+               opt->epg_path != NULL ? opt->epg_path : "disabled",
+               epg.count);
+        if (opt->epg_update) {
+            printf("EPG startup update: enabled (%s, timeout %d ms)\n",
+                   opt->epg_url != NULL ? opt->epg_url : "no URL",
+                   opt->epg_update_timeout_ms);
+        }
+    }
     printf("Up to %u clients may share the same tuned channel.\n",
            (unsigned)opt->max_http_clients);
     if (opt->http_user != NULL) {
-        printf("HTTP Basic authentication is enabled.\n");
+        printf("Viewer HTTP Basic authentication is enabled.\n");
+    }
+    if (opt->admin_user != NULL) {
+        printf("Dedicated administrator credentials are enabled.\n");
+    } else if (opt->web_ui && opt->http_user != NULL) {
+        printf("The Web UI uses the viewer HTTP credentials.\n");
+    }
+    if (opt->config_path != NULL) {
+        printf("Configuration loaded from %s; command-line values took precedence.\n",
+               opt->config_path);
     }
     if (!tls.enabled && !endpoint_is_loopback(&bound_endpoint)) {
         fprintf(stderr,
@@ -3676,12 +7787,65 @@ static int run_http_server(socket_t *control, const options_t *opt)
         if (now - last_heartbeat >= 5.0) {
             if (!send_heartbeat(*control, opt->verbose)) {
                 fprintf(stderr, "Control heartbeat failed; attempting recovery.\n");
-                if (!recover_http_control(control, opt, stream.channel, &tuning)) {
+                if (recover_http_control(control, opt, stream.channel, &tuning) !=
+                    TUNE_RESULT_OK) {
                     result = EXIT_FAILURE;
                     break;
                 }
             }
             last_heartbeat = monotonic_seconds();
+        }
+
+        if (updates.scan_running) {
+            if (!device_scan_step(control, opt, &channels, &epg,
+                                  &updates, &tuning)) {
+                fprintf(stderr, "Receiver scan failed: %s\n",
+                        updates.last_message);
+            }
+            last_heartbeat = monotonic_seconds();
+        }
+
+        if (active_clients == 0U && !updates.busy) {
+            bool scan_due = opt->device_scan_refresh_minutes > 0U &&
+                now >= updates.next_scan_due;
+            bool channel_due = opt->device_channels_update &&
+                opt->device_channels_refresh_minutes > 0U &&
+                now >= updates.next_channels_due;
+            bool epg_due = opt->device_epg_update &&
+                opt->device_epg_refresh_minutes > 0U &&
+                now >= updates.next_epg_due;
+            if (scan_due) {
+                http_stream_stop_if_idle(&stream);
+                memset(&tuning, 0, sizeof(tuning));
+                if (!device_start_scan(control, opt, &updates)) {
+                    fprintf(stderr, "Scheduled receiver scan failed: %s\n",
+                            updates.last_message);
+                    updates.next_scan_due = monotonic_seconds() +
+                        (double)opt->device_scan_refresh_minutes * 60.0;
+                }
+                last_heartbeat = monotonic_seconds();
+            }
+            if (!updates.busy && channel_due) {
+                http_stream_stop_if_idle(&stream);
+                if (!device_refresh_channels(control, opt, &channels, &updates))
+                    fprintf(stderr, "Scheduled channel update failed: %s\n",
+                            updates.last_message);
+                memset(&tuning, 0, sizeof(tuning));
+                updates.next_channels_due = monotonic_seconds() +
+                    (double)opt->device_channels_refresh_minutes * 60.0;
+                if (opt->device_epg_update) epg_due = true;
+                last_heartbeat = monotonic_seconds();
+            }
+            if (!updates.busy && epg_due) {
+                if (!device_refresh_epg(control, opt, &channels, &epg,
+                                        &updates, false))
+                    fprintf(stderr, "Scheduled EPG update failed: %s\n",
+                            updates.last_message);
+                memset(&tuning, 0, sizeof(tuning));
+                updates.next_epg_due = monotonic_seconds() +
+                    (double)opt->device_epg_refresh_minutes * 60.0;
+                last_heartbeat = monotonic_seconds();
+            }
         }
 
         ready = wait_socket_readable(listener, listener_wait);
@@ -3699,31 +7863,125 @@ static int run_http_server(socket_t *control, const options_t *opt)
             http_request_line_t request_line;
             bool keep_connection = false;
             bool head_only = false;
+            const uint64_t connection_id = next_connection_id++;
+            if (next_connection_id == 0U) {
+                next_connection_id = 1U;
+            }
 
             if (http_accept_connection(listener, &tls, opt->timeout_ms,
-                                       &connection)) {
+                                       connection_id, &connection)) {
                 if (!read_http_request(&connection, request, sizeof(request)) ||
                     !parse_http_request_line(request, &request_line)) {
                     send_http_error(&connection, 400, "Bad Request",
                                     "Bad or oversized HTTP request.\n", false);
                 } else {
                     char *query = strchr(request_line.path, '?');
+                    bool admin_path;
                     if (query != NULL) {
                         *query = '\0';
                     }
+                    admin_path = strcmp(request_line.path, "/admin") == 0 ||
+                                 strncmp(request_line.path, "/admin/", 7) == 0;
                     head_only = request_line.method == HTTP_METHOD_HEAD;
-                    if (!http_authorized(request, opt)) {
-                        send_http_unauthorized(&connection, head_only);
+
+                    if (admin_path) {
+                        if (!opt->web_ui) {
+                            send_http_error(&connection, 404, "Not Found",
+                                            "The administration Web UI is disabled.\n",
+                                            head_only);
+                        } else if (!http_admin_authorized(request, opt)) {
+                            send_http_unauthorized(&connection,
+                                                   "SORALink Administration",
+                                                   head_only);
+                        } else if (request_line.method == HTTP_METHOD_OPTIONS) {
+                            send_http_response(
+                                &connection, 204, "No Content", "text/plain",
+                                "Allow: GET, HEAD, POST, OPTIONS\r\n", "", true);
+                        } else if (request_line.method == HTTP_METHOD_GET ||
+                                   request_line.method == HTTP_METHOD_HEAD) {
+                            if (strcmp(request_line.path, "/admin") == 0 ||
+                                strcmp(request_line.path, "/admin/") == 0) {
+                                serve_admin_page(&connection, &stream, &channels,
+                                                 opt, &tls, head_only);
+                            } else if (strcmp(request_line.path,
+                                              "/admin/assets/styles.css") == 0) {
+                                serve_web_asset(&connection, opt, "styles.css",
+                                                "text/css; charset=utf-8",
+                                                head_only, false);
+                            } else if (strcmp(request_line.path,
+                                              "/admin/assets/app.js") == 0) {
+                                serve_web_asset(&connection, opt, "app.js",
+                                                "text/javascript; charset=utf-8",
+                                                head_only, false);
+                            } else if (strcmp(request_line.path,
+                                              "/admin/assets/soralink-mascot.png") == 0) {
+                                serve_web_asset(&connection, opt,
+                                                "soralink-mascot.png",
+                                                "image/png", head_only, true);
+                            } else if (strcmp(request_line.path,
+                                              "/admin/assets/soralink-logo.png") == 0) {
+                                serve_web_asset(&connection, opt,
+                                                "soralink-logo.png",
+                                                "image/png", head_only, true);
+                            } else if (strcmp(request_line.path,
+                                              "/admin/assets/soralink-avatar.png") == 0) {
+                                serve_web_asset(&connection, opt,
+                                                "soralink-avatar.png",
+                                                "image/png", head_only, true);
+                            } else if (strcmp(request_line.path,
+                                              "/admin/assets/soralink-satellite.png") == 0) {
+                                serve_web_asset(&connection, opt,
+                                                "soralink-satellite.png",
+                                                "image/png", head_only, true);
+                            } else if (strcmp(request_line.path,
+                                              "/admin/api/status") == 0) {
+                                serve_admin_api_status(&connection, &stream,
+                                                       &channels, &epg, opt,
+                                                       &updates, head_only);
+                            } else if (strncmp(request_line.path,
+                                               "/admin/api/epg/", 15) == 0) {
+                                uint32_t lcn;
+                                if (!parse_u32(request_line.path + 15, &lcn)) {
+                                    send_http_error(&connection, 400,
+                                                    "Bad Request",
+                                                    "A numeric channel number is required.\n",
+                                                    head_only);
+                                } else {
+                                    serve_admin_epg_api(&connection, &channels,
+                                                        &epg, lcn, head_only);
+                                }
+                            } else {
+                                send_http_error(&connection, 404, "Not Found",
+                                                "Unknown administration resource.\n",
+                                                head_only);
+                            }
+                        } else if (request_line.method == HTTP_METHOD_POST) {
+                            handle_admin_post(&connection, request_line.path,
+                                              request, &stream, &channels,
+                                              &epg, opt, control, &tuning,
+                                              &updates, &tls);
+                        } else {
+                            send_http_response(
+                                &connection, 405, "Method Not Allowed",
+                                "text/plain; charset=utf-8",
+                                "Allow: GET, HEAD, POST, OPTIONS\r\n",
+                                "Use GET for the dashboard and POST for administration actions.\n",
+                                false);
+                        }
+                    } else if (!http_viewer_authorized(request, opt)) {
+                        send_http_unauthorized(&connection, "SORALink",
+                                               head_only);
                     } else if (request_line.method == HTTP_METHOD_OPTIONS) {
                         send_http_response(
                             &connection, 204, "No Content", "text/plain",
                             "Allow: GET, HEAD, OPTIONS\r\n", "", true);
-                    } else if (request_line.method == HTTP_METHOD_OTHER) {
+                    } else if (request_line.method == HTTP_METHOD_POST ||
+                               request_line.method == HTTP_METHOD_OTHER) {
                         send_http_response(
                             &connection, 405, "Method Not Allowed",
                             "text/plain; charset=utf-8",
                             "Allow: GET, HEAD, OPTIONS\r\n",
-                            "Only GET, HEAD, and OPTIONS are supported.\n",
+                            "Only GET, HEAD, and OPTIONS are supported on media endpoints.\n",
                             false);
                     } else if (strcmp(request_line.path, "/playlist.m3u") == 0 ||
                                strcmp(request_line.path, "/") == 0) {
@@ -3747,6 +8005,11 @@ static int run_http_server(socket_t *control, const options_t *opt)
                         } else if (head_only) {
                             send_http_response(&connection, 200, "OK",
                                                "video/MP2T", NULL, "", true);
+                        } else if (updates.busy || updates.scan_running) {
+                            send_http_error(&connection, 503,
+                                            "Service Unavailable",
+                                            "Receiver maintenance is running. Try again when the scan/update finishes.\n",
+                                            false);
                         } else if (stream.channel != NULL &&
                                    stream.channel->lcn != channel->lcn &&
                                    http_stream_client_count(&stream) > 0U) {
@@ -3765,16 +8028,16 @@ static int run_http_server(socket_t *control, const options_t *opt)
                                             false);
                         } else {
                             if (http_stream_client_count(&stream) == 0U) {
-                                bool tuned = tune_channel(*control, opt, channel,
-                                                          &tuning);
-                                if (!tuned) {
+                                tune_result_t tune_result =
+                                    tune_channel(*control, opt, channel, &tuning);
+                                if (tune_result == TUNE_RESULT_CONTROL_ERROR) {
                                     fprintf(stderr,
-                                            "Channel tune failed; reconnecting and retrying.\n");
-                                    tuned = recover_http_control(control, opt,
-                                                                 channel, &tuning);
+                                            "Channel control command failed; reconnecting and retrying.\n");
+                                    tune_result = recover_http_control(
+                                        control, opt, channel, &tuning);
                                     last_heartbeat = monotonic_seconds();
                                 }
-                                if (!tuned ||
+                                if (tune_result != TUNE_RESULT_OK ||
                                     !http_stream_open_udp(&stream,
                                                           opt->timeout_ms)) {
                                     send_http_error(&connection, 503,
@@ -3789,7 +8052,9 @@ static int run_http_server(socket_t *control, const options_t *opt)
                                         http_stream_add_client(&stream,
                                                                &connection)) {
                                         keep_connection = true;
-                                        printf("\nClient joined channel %u (%s).\n",
+                                        printf("\nClient %llu (%s) joined channel %u (%s).\n",
+                                               (unsigned long long)connection_id,
+                                               stream.clients[0].peer_host,
                                                (unsigned)channel->lcn,
                                                channel->name);
                                     }
@@ -3798,14 +8063,15 @@ static int run_http_server(socket_t *control, const options_t *opt)
                                        http_stream_add_client(&stream,
                                                               &connection)) {
                                 keep_connection = true;
-                                printf("\nClient joined existing channel %u (%s).\n",
+                                printf("\nClient %llu joined existing channel %u (%s).\n",
+                                       (unsigned long long)connection_id,
                                        (unsigned)channel->lcn, channel->name);
                             }
                         }
                     } else {
                         send_http_error(&connection, 404, "Not Found",
                                         "Use /playlist.m3u, /tv.m3u, /radio.m3u, "
-                                        "/status.json, or /channel/<number>.\n",
+                                        "/status.json, /admin/, or /channel/<number>.\n",
                                         head_only);
                     }
                 }
@@ -3820,10 +8086,20 @@ static int run_http_server(socket_t *control, const options_t *opt)
             if (step == STREAM_STEP_RECOVER) {
                 fprintf(stderr,
                         "Stream transport stalled; reconnecting and retuning.\n");
-                if (!recover_http_control(control, opt, stream.channel, &tuning)) {
-                    http_stream_close_clients(&stream);
-                    result = EXIT_FAILURE;
-                    break;
+                {
+                    const tune_result_t recover_result =
+                        recover_http_control(control, opt, stream.channel, &tuning);
+                    if (recover_result != TUNE_RESULT_OK) {
+                        http_stream_close_clients(&stream);
+                        http_stream_stop_if_idle(&stream);
+                        if (recover_result == TUNE_RESULT_CONTROL_ERROR) {
+                            result = EXIT_FAILURE;
+                            break;
+                        }
+                        fprintf(stderr,
+                                "Receiver reconnected but the channel no longer locks; viewers were disconnected.\n");
+                        continue;
+                    }
                 }
                 stream.consecutive_timeouts = 0;
                 stream.retry_flag = 0;
@@ -3846,7 +8122,9 @@ static int run_http_server(socket_t *control, const options_t *opt)
         CLOSESOCKET(listener);
     }
     tls_server_cleanup(&tls);
+    free_epg_list(&epg);
     free_channel_list(&channels);
+    device_update_state_free(&updates);
     return result;
 }
 
@@ -3873,6 +8151,13 @@ static bool run_self_tests(void)
     char encoded[64];
     uint8_t response[17];
     uint8_t frame[FRAME_SIZE];
+    int64_t parsed_time = -1;
+    char epg_text[256];
+    download_url_t parsed_url;
+    options_t tone_test_opt;
+    uint8_t tone_frame[FRAME_SIZE];
+    uint8_t *decoded_chunked = NULL;
+    size_t decoded_chunked_length = 0U;
     bool ok = true;
 
 #define TEST_CHECK(condition, description) \
@@ -3933,23 +8218,97 @@ static bool run_self_tests(void)
 
     TEST_CHECK(parse_channel_tag(
         "<ch\n type='tv' pol='F' sym='22000' s_id='101'\n"
-        " freq='11500' lcn='7' s_name='News &amp; Sport &#x2605;' fta='1'>",
+        " freq='11500' lcn='7' s_name='News &amp; Sport &#x2605;' "
+        "fta='1' epg_id='news.example' prog_idx='1085734912' ts_id='1011'>",
         &channel) && channel.polarization == 'F' &&
         strcmp(channel.type, "TV") == 0 &&
+        strcmp(channel.epg_id, "news.example") == 0 &&
+        channel.have_program_index && channel.program_index == 1085734912U &&
+        channel.transport_stream_id == 1011U &&
         strstr(channel.name, "News & Sport") != NULL && channel.fta,
-        "Multiline XML attributes and named/numeric entities");
+        "Multiline channel XML, EPG ID, and named/numeric entities");
+
+    TEST_CHECK(parse_xmltv_time("19700101010000 +0100", &parsed_time) &&
+               parsed_time == 0,
+               "XMLTV timestamp and UTC offset parsing");
+    TEST_CHECK(xml_element_text(
+        "<programme><title lang='en'>News &amp; Weather</title></programme>",
+        "title", epg_text, sizeof(epg_text)) &&
+        strcmp(epg_text, "News & Weather") == 0,
+        "XMLTV programme text extraction and entity decoding");
+
+    {
+        epg_list_t native_epg;
+        size_t native_capacity = 0U;
+        memset(&native_epg, 0, sizeof(native_epg));
+        snprintf(channel.epg_id, sizeof(channel.epg_id), "zdf.de");
+        TEST_CHECK(parse_native_epg_xml(
+            (const uint8_t *)"<epg_Data><ch s_id='11110' ts_id='1011' prog_idx='1085734912'><evt id='1' des='Heute &amp; Wetter' dur='00:30' date='40587' time='01:00'/></ch></epg_Data>",
+            &channel, &native_epg, &native_capacity) &&
+            native_epg.count == 1U &&
+            native_epg.items[0].start_utc == 3600LL &&
+            native_epg.items[0].stop_utc == 5400LL &&
+            strcmp(native_epg.items[0].title, "Heute & Wetter") == 0,
+            "Native Device EPG XML and MJD parsing");
+        free_epg_list(&native_epg);
+    }
 
     TEST_CHECK(base64_encode((const uint8_t *)"user:pass", 9,
                              encoded, sizeof(encoded)) > 0U &&
                strcmp(encoded, "dXNlcjpwYXNz") == 0,
                "HTTP Basic-auth Base64 encoding");
 
+    TEST_CHECK(parse_download_url(
+                   "https://example.test:8443/guide.xml?region=eu",
+                   &parsed_url) && parsed_url.https &&
+               strcmp(parsed_url.host, "example.test") == 0 &&
+               parsed_url.port == 8443U &&
+               strcmp(parsed_url.path, "/guide.xml?region=eu") == 0,
+               "EPG update URL parser handles HTTPS ports and queries");
+
+    {
+        static const uint8_t chunked_sample[] =
+            "4\r\n<tv>\r\n5\r\n</tv>\r\n0\r\n\r\n";
+        TEST_CHECK(decode_chunked_body(chunked_sample,
+                    sizeof(chunked_sample) - 1U,
+                    &decoded_chunked, &decoded_chunked_length) &&
+                   decoded_chunked_length == 9U &&
+                   memcmp(decoded_chunked, "<tv></tv>", 9U) == 0,
+                   "EPG HTTP downloader decodes chunked bodies");
+        free(decoded_chunked);
+        decoded_chunked = NULL;
+    }
+
+    build_device_scan_action_request(frame, &tone_test_opt,
+                                     DEVICE_SCAN_START_ACTION);
+    TEST_CHECK(frame[20] == 0x10 && frame[21] == 0x7E,
+               "Receiver scan-start command uses APIX 0x10/action 0x7E");
+    build_device_scan_status_request(frame);
+    TEST_CHECK(frame[20] == 0x02 && frame[11] == 17,
+               "Receiver scan-status request asks for 17 data bytes");
+
     build_permission_claim(frame);
     memset(response, 0, sizeof(response));
     memcpy(response + 4, "USBS", 4);
     memcpy(response + 8, frame + 4, 4);
+    response[16] = 0x02;
     TEST_CHECK(validate_csw(response, sizeof(response), 4, frame),
-               "Strict CSW signature, tag, residue, and status validation");
+               "Device CSW accepts firmware state 0x02 with valid signature/tag/residue");
+
+    memset(&tone_test_opt, 0, sizeof(tone_test_opt));
+    tone_test_opt.tone = TONE_AUTO;
+    tone_test_opt.lnb_switch_mhz = 11700U;
+    tone_test_opt.frequency_mhz = 11362U;
+    tone_test_opt.symbol_rate_ks = 22000U;
+    tone_test_opt.polarization = 'H';
+    tone_test_opt.orbital_tenths = 192U;
+    build_dvbs_tune(tone_frame, &tone_test_opt);
+    TEST_CHECK((tone_frame[21] & 0xC0U) == 0x80U,
+               "Auto LNB tone resolves OFF below switch frequency");
+    tone_test_opt.frequency_mhz = 12226U;
+    build_dvbs_tune(tone_frame, &tone_test_opt);
+    TEST_CHECK((tone_frame[21] & 0xC0U) == 0x40U,
+               "Auto LNB tone resolves ON above switch frequency");
 
 #undef TEST_CHECK
     printf("Self-test result: %s\n", ok ? "PASS" : "FAIL");

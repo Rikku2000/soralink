@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#040a1c">
+  <title>SORALink Mission Control</title>
+  <link rel="stylesheet" href="/admin/assets/styles.css">
+</head>
+<body>
+  <div class="space-scene" aria-hidden="true">
+    <div class="aurora aurora-a"></div>
+    <div class="aurora aurora-b"></div>
+    <div class="orbit orbit-a"></div>
+    <div class="orbit orbit-b"></div>
+    <div class="starfield"></div>
+    <div class="floor-grid"></div>
+  </div>
+
+  <div class="console-shell">
+    <header class="command-header glass-panel">
+      <a class="brand" href="#overview" aria-label="SORALink overview">
+        <img src="/admin/assets/soralink-logo.png" alt="SORALink">
+        <div>
+          <span>Mission Control</span>
+          <small>DVB-S2 to VLC bridge</small>
+        </div>
+      </a>
+
+      <div class="header-center">
+        <div class="connection-beacon" id="connection-beacon">
+          <i></i>
+          <div><span>Bridge status</span><strong id="header-online">Connecting</strong></div>
+        </div>
+        <div class="header-stat"><span>Uptime</span><strong id="header-uptime">00:00:00</strong></div>
+        <div class="header-stat"><span>Viewers</span><strong id="header-viewers">0 / 0</strong></div>
+        <div class="header-stat"><span>Channels</span><strong id="header-channels">0</strong></div>
+      </div>
+
+      <button class="admin-badge" data-view-target="settings" type="button" aria-label="Open settings for Administrator">
+        <span class="admin-avatar"><img class="admin-avatar-image" src="/admin/assets/soralink-avatar.png" alt="Administrator avatar"></span>
+        <span><b>Administrator</b><small>SORALink</small></span>
+      </button>
+    </header>
+
+    <nav class="command-dock glass-panel" aria-label="SORALink sections">
+      <button class="dock-item active" data-view-target="overview" type="button"><span>◈</span><b>Overview</b></button>
+      <button class="dock-item" data-view-target="channels" type="button"><span>▦</span><b>Channels</b></button>
+      <button class="dock-item" data-view-target="guide" type="button"><span>≡</span><b>Programme guide</b></button>
+      <button class="dock-item" data-view-target="viewers" type="button"><span>◉</span><b>Viewers</b></button>
+      <button class="dock-item" data-view-target="playlist" type="button"><span>▶</span><b>Playlist</b></button>
+      <button class="dock-item" data-view-target="settings" type="button"><span>⚙</span><b>Settings</b></button>
+      <button class="dock-item" data-view-target="diagnostics" type="button"><span>{ }</span><b>Diagnostics</b></button>
+    </nav>
+
+    <main class="view-stage">
+      <section class="app-view active" id="view-overview" data-view="overview" aria-labelledby="overview-title">
+        <div class="overview-grid">
+          <article class="hero-card glass-panel">
+            <div class="hero-copy">
+              <span class="kicker">SORALink satellite bridge</span>
+              <h1 id="overview-title">Bridging the sky<br><em>to your screen.</em></h1>
+              <p>Control DVB-S2 channels, monitor viewers, inspect XMLTV schedules and hand stream URLs directly to VLC from one command center.</p>
+
+              <div class="current-link">
+                <span class="link-label">Current bridge</span>
+                <strong id="hero-current-channel">No channel tuned</strong>
+                <small id="hero-current-detail">The tuner is waiting for a viewer.</small>
+              </div>
+
+              <div class="mascot-status glass-subpanel">
+                <span>Transport output</span>
+                <strong id="hero-rate">0.00 Mbps</strong>
+                <div class="output-meter" id="hero-meter"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              </div>
+            </div>
+
+            <div class="mascot-stage" aria-label="SORALink mascot">
+              <div class="mascot-halo"></div>
+              <img src="/admin/assets/soralink-mascot.png" alt="Full-body SORALink mascot">
+            </div>
+          </article>
+
+          <div class="telemetry-row">
+            <article class="telemetry-card glass-panel"><span>Signal state</span><strong id="telemetry-signal">IDLE</strong><small id="telemetry-protocol">Protocol ready</small></article>
+            <article class="telemetry-card glass-panel"><span>Connected viewers</span><strong id="telemetry-viewers">0</strong><small id="telemetry-capacity">Capacity 0</small></article>
+            <article class="telemetry-card glass-panel"><span>Transport blocks</span><strong id="telemetry-blocks">0</strong><small id="telemetry-errors">0 timeouts</small></article>
+            <article class="telemetry-card glass-panel"><span>EPG programmes</span><strong id="telemetry-epg">0</strong><small id="telemetry-epg-loaded">Not loaded</small></article>
+          </div>
+
+          <article class="overview-panel glass-panel now-panel">
+            <div class="panel-heading">
+              <div><span class="section-label">Now on air</span><h2 id="now-channel-name">No active channel</h2></div>
+              <button class="icon-button" id="overview-open-guide" type="button" aria-label="Open programme guide">↗</button>
+            </div>
+            <div class="now-content">
+              <div>
+                <span class="programme-tag">NOW</span>
+                <h3 id="overview-now-title">No programme data</h3>
+                <p id="overview-now-time">—</p>
+                <div class="timeline"><i id="overview-now-progress"></i></div>
+              </div>
+              <div>
+                <span class="programme-tag next">NEXT</span>
+                <h3 id="overview-next-title">No programme data</h3>
+                <p id="overview-next-time">—</p>
+              </div>
+            </div>
+          </article>
+
+          <article class="overview-panel glass-panel activity-panel">
+            <div class="panel-heading">
+              <div><span class="section-label">Quick control</span><h2>Bridge actions</h2></div>
+            </div>
+            <div class="quick-action-grid">
+              <button id="overview-reload" type="button"><span>↻</span><b>Reload local files</b><small>Reload channel XML and XMLTV</small></button>
+              <button id="overview-device-sync" type="button"><span>⇩</span><b>Sync from receiver</b><small>Download channels and native EPG</small></button>
+              <button id="overview-device-scan" type="button"><span>⌁</span><b>Scan receiver</b><small>Rebuild lineup and collect DVB EPG</small></button>
+              <button id="overview-playlist" type="button"><span>▶</span><b>Open playlist</b><small>Launch the M3U endpoint</small></button>
+              <button id="overview-viewers" type="button"><span>◉</span><b>Manage viewers</b><small>Inspect or disconnect clients</small></button>
+              <button id="overview-settings" type="button"><span>⚙</span><b>Runtime settings</b><small>Limits and timeouts</small></button>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="app-view" id="view-channels" data-view="channels" aria-labelledby="channels-title" hidden>
+        <div class="page-grid single-page">
+          <article class="page-panel glass-panel">
+            <div class="page-header">
+              <div><span class="section-label">Channel directory</span><h1 id="channels-title">All channels</h1><p>Search the loaded XML lineup, inspect tuning details, open EPG data or copy a VLC stream URL.</p></div>
+              <div class="page-actions">
+                <button class="secondary-button" id="channels-reload" type="button">Reload local files</button>
+                <button class="secondary-button" id="channels-device-update" type="button">Update from receiver</button>
+                <button class="secondary-button" id="channels-device-scan" type="button">Scan receiver</button>
+                <button class="primary-button" id="channels-open-playlist" type="button">Open playlist</button>
+              </div>
+            </div>
+
+            <div class="channel-toolbar">
+              <label class="search-field"><span>⌕</span><input id="channels-search" type="search" placeholder="Search name, LCN, service ID or EPG ID" autocomplete="off"></label>
+              <select id="channels-type-filter" aria-label="Channel type filter">
+                <option value="all">All services</option>
+                <option value="tv">TV only</option>
+                <option value="radio">Radio only</option>
+              </select>
+              <span class="result-count" id="channels-result-count">0 services</span>
+            </div>
+
+            <div class="data-table-wrap">
+              <table class="data-table">
+                <thead><tr><th>LCN</th><th>Channel</th><th>Type</th><th>Service ID</th><th>Transponder</th><th>Now</th><th>Actions</th></tr></thead>
+                <tbody id="channels-table-body"></tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="app-view" id="view-guide" data-view="guide" aria-labelledby="guide-title" hidden>
+        <div class="guide-layout">
+          <aside class="guide-sidebar glass-panel">
+            <div class="page-header compact">
+              <div><span class="section-label">XMLTV browser</span><h1 id="guide-title">Programme guide</h1></div>
+            </div>
+            <label class="search-field"><span>⌕</span><input id="guide-channel-search" type="search" placeholder="Find channel" autocomplete="off"></label>
+            <div class="guide-channel-list" id="guide-channel-list"></div>
+          </aside>
+
+          <article class="guide-main glass-panel">
+            <div class="guide-hero">
+              <div>
+                <span class="section-label">Selected service</span>
+                <h2 id="guide-channel-name">Choose a channel</h2>
+                <p id="guide-channel-meta">No XMLTV schedule loaded.</p>
+              </div>
+              <div class="page-actions">
+                <button class="secondary-button" id="guide-reload" type="button">Reload local EPG</button>
+                <button class="secondary-button" id="guide-device-update" type="button">Update from receiver</button>
+                <button class="primary-button" id="guide-copy-stream" type="button">Copy stream URL</button>
+              </div>
+            </div>
+
+            <div class="guide-now-next">
+              <article class="programme-card current">
+                <span class="programme-tag">NOW</span>
+                <h3 id="guide-now-title">No programme data</h3>
+                <p id="guide-now-time">—</p>
+                <small id="guide-now-detail"></small>
+                <div class="timeline"><i id="guide-progress"></i></div>
+              </article>
+              <article class="programme-card">
+                <span class="programme-tag next">NEXT</span>
+                <h3 id="guide-next-title">No programme data</h3>
+                <p id="guide-next-time">—</p>
+                <small id="guide-next-detail"></small>
+              </article>
+            </div>
+
+            <div class="schedule-list" id="guide-schedule"></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="app-view" id="view-viewers" data-view="viewers" aria-labelledby="viewers-title" hidden>
+        <div class="viewers-layout">
+          <div class="viewer-summary-row">
+            <article class="telemetry-card glass-panel"><span>Connected now</span><strong id="viewer-summary-connected">0</strong><small>Active HTTP stream clients</small></article>
+            <article class="telemetry-card glass-panel"><span>Maximum clients</span><strong id="viewer-summary-max">0</strong><small>Configured session limit</small></article>
+            <article class="telemetry-card glass-panel"><span>Current stream</span><strong id="viewer-summary-channel">Idle</strong><small id="viewer-summary-rate">0.00 Mbps</small></article>
+          </div>
+
+          <article class="page-panel glass-panel">
+            <div class="page-header">
+              <div><span class="section-label">Connection control</span><h1 id="viewers-title">Active viewers</h1><p>Every viewer sharing the current tuned channel appears here with its address and session duration.</p></div>
+              <button class="danger-button" id="viewers-disconnect-all" type="button">Disconnect all viewers</button>
+            </div>
+            <div class="data-table-wrap">
+              <table class="data-table">
+                <thead><tr><th>Connection ID</th><th>IP address</th><th>Port</th><th>Connected</th><th>Action</th></tr></thead>
+                <tbody id="viewers-table-body"></tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="app-view" id="view-playlist" data-view="playlist" aria-labelledby="playlist-title" hidden>
+        <div class="playlist-layout">
+          <article class="playlist-hero glass-panel">
+            <div>
+              <span class="section-label">VLC endpoints</span>
+              <h1 id="playlist-title">Playlist launcher</h1>
+              <p>Choose the complete lineup or a filtered TV/radio list. URLs are generated from the current browser origin.</p>
+            </div>
+          </article>
+
+          <div class="playlist-cards">
+            <article class="endpoint-card glass-panel">
+              <span>All services</span><h2>Complete playlist</h2><code id="playlist-all-url">/playlist.m3u</code>
+              <div><button class="secondary-button playlist-copy" data-playlist-path="/playlist.m3u" type="button">Copy URL</button><button class="primary-button playlist-open" data-playlist-path="/playlist.m3u" type="button">Open</button></div>
+            </article>
+            <article class="endpoint-card glass-panel">
+              <span>Television</span><h2>TV playlist</h2><code id="playlist-tv-url">/tv.m3u</code>
+              <div><button class="secondary-button playlist-copy" data-playlist-path="/tv.m3u" type="button">Copy URL</button><button class="primary-button playlist-open" data-playlist-path="/tv.m3u" type="button">Open</button></div>
+            </article>
+            <article class="endpoint-card glass-panel">
+              <span>Radio</span><h2>Radio playlist</h2><code id="playlist-radio-url">/radio.m3u</code>
+              <div><button class="secondary-button playlist-copy" data-playlist-path="/radio.m3u" type="button">Copy URL</button><button class="primary-button playlist-open" data-playlist-path="/radio.m3u" type="button">Open</button></div>
+            </article>
+          </div>
+
+          <article class="page-panel glass-panel playlist-channel-panel">
+            <div class="page-header compact"><div><span class="section-label">Direct stream links</span><h2>Channel endpoints</h2></div></div>
+            <div class="channel-link-grid" id="playlist-channel-grid"></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="app-view" id="view-settings" data-view="settings" aria-labelledby="settings-title" hidden>
+        <div class="settings-layout">
+          <article class="settings-form-panel glass-panel">
+            <div class="page-header">
+              <div><span class="section-label">Live configuration</span><h1 id="settings-title">Bridge settings</h1><p>These settings apply immediately. Persistence is available only when the service was started with an active config file.</p></div>
+            </div>
+
+            <form id="settings-form" class="settings-form">
+              <label><span>Maximum simultaneous clients</span><input id="setting-max-clients" name="max_clients" type="number" min="1" max="64" required></label>
+              <label><span>Tuning wait</span><div class="unit-field"><input id="setting-wait-ms" name="wait_ms" type="number" min="0" max="60000" required><b>ms</b></div></label>
+              <label><span>Network timeout</span><div class="unit-field"><input id="setting-timeout-ms" name="timeout_ms" type="number" min="100" max="60000" required><b>ms</b></div></label>
+              <label><span>Missing stream key policy</span><select id="setting-missing-key" name="missing_key"><option value="pass">Pass encrypted packets</option><option value="drop">Drop encrypted packets</option></select></label>
+              <div class="settings-section-title"><span>Receiver data maintenance</span><small>Scheduled jobs only run when no viewers are connected.</small></div>
+              <label class="toggle-row"><input id="setting-device-channels-update" type="checkbox"><span><b>Automatic channel-list updates</b><small>Download channels.xml from the OR S2D.</small></span></label>
+              <label><span>Channel refresh interval</span><div class="unit-field"><input id="setting-device-channels-minutes" type="number" min="0" max="10080" required><b>min</b></div></label>
+              <label class="toggle-row"><input id="setting-device-epg-update" type="checkbox"><span><b>Automatic native EPG updates</b><small>Download the DVB EPG cache stored by the OR S2D.</small></span></label>
+              <label><span>EPG refresh interval</span><div class="unit-field"><input id="setting-device-epg-minutes" type="number" min="0" max="10080" required><b>min</b></div></label>
+              <label class="toggle-row"><input id="setting-device-update-start" type="checkbox"><span><b>Update during startup</b><small>Run enabled receiver updates before serving clients.</small></span></label>
+              <div class="settings-section-title"><span>Receiver channel scan</span><small>Manual or scheduled scans rebuild the dongle lineup and populate its DVB EPG cache. Scans only start while idle.</small></div>
+              <label><span>Automatic scan interval</span><div class="unit-field"><input id="setting-device-scan-minutes" type="number" min="0" max="10080" required><b>min</b></div></label>
+              <label><span>Scan timeout</span><div class="unit-field"><input id="setting-device-scan-timeout" type="number" min="1" max="120" required><b>min</b></div></label>
+              <label><span>Search range code</span><input id="setting-device-scan-range" type="number" min="0" max="7" required></label>
+              <label><span>Ordering code</span><input id="setting-device-scan-order" type="number" min="0" max="3" required></label>
+              <label class="toggle-row"><input id="setting-device-scan-network" type="checkbox"><span><b>Network scan</b><small>Follow DVB network information while scanning, matching the Android app option.</small></span></label>
+              <label class="toggle-row"><input id="setting-device-scan-epg" type="checkbox"><span><b>Download EPG after scan</b><small>Refresh channels.xml and epg.xml after the receiver reports completion.</small></span></label>
+              <div class="scan-status-card" id="receiver-scan-status"><div><span>Receiver scan</span><strong id="receiver-scan-title">Idle</strong><small id="receiver-scan-detail">No scan is running.</small></div><div class="scan-progress"><i id="receiver-scan-progress"></i></div><div class="scan-counts"><span>TV <b id="receiver-scan-tv">0</b></span><span>Radio <b id="receiver-scan-radio">0</b></span></div></div>
+              <div class="device-action-row"><button class="secondary-button" id="settings-update-channels" type="button">Update channels now</button><button class="secondary-button" id="settings-update-epg" type="button">Update EPG now</button><button class="secondary-button" id="settings-update-all" type="button">Update all now</button><button class="primary-button" id="settings-start-scan" type="button">Scan + collect EPG</button><button class="danger-button" id="settings-cancel-scan" type="button">Cancel scan</button></div>
+              <label class="toggle-row"><input id="setting-persist" type="checkbox"><span><b>Persist changes</b><small>Write the values back to the active configuration file.</small></span></label>
+              <div class="settings-actions"><button class="primary-button" type="submit">Apply settings</button><button class="secondary-button" id="settings-reset" type="button">Reload current values</button></div>
+            </form>
+          </article>
+
+          <aside class="settings-info-panel glass-panel">
+            <div class="page-header compact"><div><span class="section-label">Runtime sources</span><h2>Service files</h2></div></div>
+            <dl class="info-list">
+              <div><dt>Admin authentication</dt><dd id="info-admin-auth">Disabled</dd></div>
+              <div><dt>Viewer authentication</dt><dd id="info-viewer-auth">Disabled</dd></div>
+              <div><dt>Configuration file</dt><dd id="info-config-path">CLI only</dd></div>
+              <div><dt>Channel XML</dt><dd id="info-channels-path">—</dd></div>
+              <div><dt>XMLTV EPG</dt><dd id="info-epg-path">Not configured</dd></div>
+              <div><dt>EPG startup update</dt><dd id="info-epg-update">Disabled</dd></div>
+              <div><dt>EPG download URL</dt><dd id="info-epg-url">Not configured</dd></div>
+              <div><dt>Web root</dt><dd id="info-web-root">—</dd></div>
+              <div><dt>Last channel sync</dt><dd id="info-device-channels-last">Never</dd></div>
+              <div><dt>Last EPG sync</dt><dd id="info-device-epg-last">Never</dd></div>
+              <div><dt>Last receiver scan</dt><dd id="info-device-scan-last">Never</dd></div>
+              <div><dt>Receiver update status</dt><dd id="info-device-message">Idle</dd></div>
+            </dl>
+          </aside>
+        </div>
+      </section>
+
+      <section class="app-view" id="view-diagnostics" data-view="diagnostics" aria-labelledby="diagnostics-title" hidden>
+        <div class="diagnostic-layout">
+          <article class="diagnostic-summary glass-panel">
+            <div class="page-header"><div><span class="section-label">System diagnostics</span><h1 id="diagnostics-title">Bridge health</h1><p>Live counters from the embedded HTTP server and transport-stream forwarding loop.</p></div><button class="secondary-button" id="diagnostics-refresh" type="button">Refresh now</button></div>
+            <div class="diagnostic-cards">
+              <article><span>Server time</span><strong id="diag-server-time">—</strong></article>
+              <article><span>Total bytes</span><strong id="diag-total-bytes">0 B</strong></article>
+              <article><span>TS blocks</span><strong id="diag-blocks">0</strong></article>
+              <article><span>Timeouts</span><strong id="diag-timeouts">0</strong></article>
+              <article><span>Bad blocks</span><strong id="diag-bad-blocks">0</strong></article>
+              <article><span>EPG loaded</span><strong id="diag-epg-loaded">—</strong></article>
+              <article><span>EPG updater</span><strong id="diag-epg-updater">Disabled</strong></article>
+              <article><span>Receiver channels</span><strong id="diag-device-channels">Never</strong></article>
+              <article><span>Receiver EPG</span><strong id="diag-device-epg">Never</strong></article>
+            </div>
+          </article>
+
+          <article class="raw-panel glass-panel">
+            <div class="page-header compact"><div><span class="section-label">Raw API</span><h2>/admin/api/status</h2></div><button class="secondary-button" id="diagnostics-copy-json" type="button">Copy JSON</button></div>
+            <pre id="diagnostics-json">Waiting for status…</pre>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer class="status-footer glass-panel">
+      <span><i class="status-dot"></i><b id="footer-status">Connecting to SORALink</b></span>
+      <span>Data rate <b id="footer-rate">0.00 Mbps</b></span>
+      <span>Current service <b id="footer-channel">Idle</b></span>
+      <span>EPG <b id="footer-epg">0 programmes</b></span>
+      <span class="footer-version">Web UI v1.0</span>
+    </footer>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="sr-only" id="connection-state" aria-live="polite">Connecting to SORALink.</div>
+  <script src="/admin/assets/app.js"></script>
+</body>
+</html>
