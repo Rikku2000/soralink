@@ -28,6 +28,91 @@ const state = {
   toastTimer: null
 };
 
+
+const SATELLITE_PRESETS = Object.freeze({
+  'hispasat-30w': {label: 'Hispasat 30.0°W', orbital: 300, west: true, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 23},
+  'eutelsat-5w': {label: 'Eutelsat 5.0°W', orbital: 50, west: true, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 10},
+  'amos-4w': {label: 'Amos 4.0°W', orbital: 40, west: true, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 2},
+  'thor-0.8w': {label: 'Thor 0.8°W', orbital: 8, west: true, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 65},
+  'bulgariasat-1.9e': {label: 'BulgariaSat 1.9°E', orbital: 19, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 16},
+  'astra-4.8e': {label: 'Astra 4.8°E', orbital: 48, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 14},
+  'eutelsat-7e': {label: 'Eutelsat 7.0°E', orbital: 70, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 11},
+  'eutelsat-9e': {label: 'Eutelsat 9.0°E', orbital: 90, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 26},
+  'hotbird-13e': {label: 'Hot Bird 13.0°E', orbital: 130, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 73},
+  'eutelsat-16e': {label: 'Eutelsat 16.0°E', orbital: 160, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 40},
+  'astra-19.2e': {label: 'Astra 19.2°E', orbital: 192, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 88, bundledSweep: true},
+  'astra-23.5e': {label: 'Astra 23.5°E', orbital: 235, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 26},
+  'badr-26e': {label: 'Badr 26.0°E', orbital: 260, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 15},
+  'astra-28.2e': {label: 'Astra 28.2°E', orbital: 282, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 59},
+  'eutelsat-33e': {label: 'Eutelsat 33.0°E', orbital: 330, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 1},
+  'hellas-sat-39e': {label: 'Hellas Sat 39.0°E', orbital: 390, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 30},
+  'turksat-42e': {label: 'Türksat 42.0°E', orbital: 420, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 43},
+  'intelsat-45e': {label: 'Intelsat 45.0°E', orbital: 450, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 1},
+  'monacosat-52e': {label: 'MonacoSat 52.0°E', orbital: 520, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 22}
+});
+
+function matchingSatellitePreset(config = {}) {
+  if (config.satellite_preset && SATELLITE_PRESETS[config.satellite_preset]) {
+    return config.satellite_preset;
+  }
+  const orbital = Number(config.orbital_tenths ?? 192);
+  const west = Boolean(config.west);
+  const low = Number(config.lnb_low_mhz ?? 9750);
+  const high = Number(config.lnb_high_mhz ?? 10600);
+  const switchMHz = Number(config.lnb_switch_mhz ?? 11700);
+  const tone = config.tone || 'auto';
+  return Object.entries(SATELLITE_PRESETS).find(([, preset]) =>
+    preset.orbital === orbital && preset.west === west && preset.low === low &&
+    preset.high === high && preset.switchMHz === switchMHz && preset.tone === tone
+  )?.[0] || 'custom';
+}
+
+function updateSatellitePresetSummary() {
+  const key = $('#setting-satellite-preset')?.value || 'custom';
+  const preset = SATELLITE_PRESETS[key];
+  const summary = $('#satellite-preset-summary');
+  if (!summary) return;
+  if (preset) {
+    text(summary, `${preset.label} · ${preset.transponders} Satindex transponders · Universal LNB ${preset.low}/${preset.high} MHz`);
+  } else {
+    const orbital = Number($('#setting-orbital-tenths')?.value || 0) / 10;
+    const direction = $('#setting-orbital-direction')?.value === '1' ? 'W' : 'E';
+    text(summary, `Custom profile · ${orbital.toFixed(1)}°${direction}`);
+  }
+}
+
+function applySatellitePreset(key) {
+  const preset = SATELLITE_PRESETS[key];
+  if (!preset) {
+    updateSatellitePresetSummary();
+    return;
+  }
+  $('#setting-orbital-tenths').value = preset.orbital;
+  $('#setting-orbital-direction').value = preset.west ? '1' : '0';
+  $('#setting-lnb-low').value = preset.low;
+  $('#setting-lnb-high').value = preset.high;
+  $('#setting-lnb-switch').value = preset.switchMHz;
+  $('#setting-tone').value = preset.tone;
+  $('#setting-device-scan-mode').value = preset.bundledSweep ? '110' : '0';
+  updateSatellitePresetSummary();
+  updateScanMethodHelp();
+}
+
+function updateScanMethodHelp() {
+  const presetKey = $('#setting-satellite-preset')?.value || 'custom';
+  const mode = Number($('#setting-device-scan-mode')?.value || 0);
+  const help = $('#scan-mode-help');
+  if (!help) return;
+  const preset = SATELLITE_PRESETS[presetKey];
+  if (mode === 110 && preset?.bundledSweep) {
+    text(help, `${preset.label} software sweep: ${preset.transponders} bundled transponders are tuned and scanned one by one, then merged locally.`);
+  } else if (mode === 110) {
+    text(help, `${preset?.label || 'This satellite'} has no bundled transponder sweep yet. SORALink will fall back to the Device internal scan.`);
+  } else {
+    text(help, `Uses the Device internal transponder table for ${preset?.label || 'the selected satellite'}. Satindex lists ${preset?.transponders ?? 'unknown'} transponders, but this firmware may store fewer.`);
+  }
+}
+
 function text(element, value) {
   if (element) element.textContent = String(value ?? '');
 }
@@ -616,11 +701,24 @@ function renderSettings() {
   $('#setting-device-channels-minutes').value = Number(device.channels_refresh_minutes ?? 1440);
   $('#setting-device-epg-minutes').value = Number(device.epg_refresh_minutes ?? 240);
   $('#setting-device-scan-minutes').value = Number(device.scan_refresh_minutes ?? 0);
-  $('#setting-device-scan-timeout').value = Number(config.device_scan_timeout_minutes ?? 30);
+  $('#setting-device-scan-timeout').value = Number(config.device_scan_timeout_minutes ?? 45);
+  $('#setting-device-scan-mode').value = String(Number(config.device_scan_mode ?? 110));
+  $('#setting-device-scan-sort').value = String(Number(config.device_scan_sort_mode ?? 0));
   $('#setting-device-scan-range').value = Number(config.device_scan_search_range ?? 0);
   $('#setting-device-scan-order').value = Number(config.device_scan_order_by ?? 0);
   $('#setting-device-scan-network').checked = Boolean(config.device_scan_network ?? true);
   $('#setting-device-scan-epg').checked = Boolean(config.device_scan_epg_after ?? true);
+  $('#setting-device-scan-apply-satellite').checked = Boolean(config.device_scan_apply_satellite ?? false);
+  $('#setting-orbital-tenths').value = Number(config.orbital_tenths ?? 192);
+  $('#setting-orbital-direction').value = config.west ? '1' : '0';
+  $('#setting-lnb-low').value = Number(config.lnb_low_mhz ?? 9750);
+  $('#setting-lnb-high').value = Number(config.lnb_high_mhz ?? 10600);
+  $('#setting-lnb-switch').value = Number(config.lnb_switch_mhz ?? 11700);
+  $('#setting-diseqc-port').value = String(Number(config.diseqc_port ?? 0));
+  $('#setting-tone').value = config.tone || 'auto';
+  $('#setting-satellite-preset').value = matchingSatellitePreset(config);
+  updateSatellitePresetSummary();
+  updateScanMethodHelp();
   $('#setting-persist').disabled = !config.config_active;
   $('#setting-persist').checked = Boolean(config.config_active);
 
@@ -651,8 +749,7 @@ function renderSettings() {
   $('#settings-cancel-scan').disabled = !device.scan_running;
 }
 
-async function submitSettings(event) {
-  event.preventDefault();
+function collectSettingsValues() {
   const values = {
     max_clients: $('#setting-max-clients').value,
     wait_ms: $('#setting-wait-ms').value,
@@ -665,12 +762,28 @@ async function submitSettings(event) {
     device_epg_refresh_minutes: $('#setting-device-epg-minutes').value,
     device_scan_refresh_minutes: $('#setting-device-scan-minutes').value,
     device_scan_timeout_minutes: $('#setting-device-scan-timeout').value,
+    device_scan_mode: $('#setting-device-scan-mode').value,
+    device_scan_sort_mode: $('#setting-device-scan-sort').value,
     device_scan_search_range: $('#setting-device-scan-range').value,
     device_scan_order_by: $('#setting-device-scan-order').value,
     device_scan_network: $('#setting-device-scan-network').checked ? 1 : 0,
-    device_scan_epg_after: $('#setting-device-scan-epg').checked ? 1 : 0
+    device_scan_epg_after: $('#setting-device-scan-epg').checked ? 1 : 0,
+    device_scan_apply_satellite: $('#setting-device-scan-apply-satellite').checked ? 1 : 0,
+    orbital_tenths: $('#setting-orbital-tenths').value,
+    west: $('#setting-orbital-direction').value,
+    tone: $('#setting-tone').value,
+    lnb_low_mhz: $('#setting-lnb-low').value,
+    lnb_high_mhz: $('#setting-lnb-high').value,
+    lnb_switch_mhz: $('#setting-lnb-switch').value,
+    diseqc_port: $('#setting-diseqc-port').value
   };
   if ($('#setting-persist').checked && !$('#setting-persist').disabled) values.persist = 1;
+  return values;
+}
+
+async function submitSettings(event) {
+  event.preventDefault();
+  const values = collectSettingsValues();
   const ok = await postAction('/admin/settings', values, values.persist ? 'Settings applied and saved' : 'Settings applied');
   if (ok) state.settingsDirty = false;
 }
@@ -798,11 +911,43 @@ function bindEvents() {
   $('#settings-update-channels').addEventListener('click', () => postAction('/admin/device/update-channels', {}, 'Channel list updated from receiver'));
   $('#settings-update-epg').addEventListener('click', () => postAction('/admin/device/update-epg', {}, 'EPG updated from receiver'));
   $('#settings-update-all').addEventListener('click', () => postAction('/admin/device/update-all', {}, 'Receiver data updated'));
-  $('#settings-start-scan').addEventListener('click', () => {
-    if (!window.confirm('Start the OR S2D channel scan now? The receiver lineup will be rebuilt, then channels and EPG will be downloaded.')) return;
-    postAction('/admin/device/scan', {}, 'Receiver channel scan started');
+  $('#settings-start-scan').addEventListener('click', async () => {
+    const presetKey = $('#setting-satellite-preset').value;
+    const preset = SATELLITE_PRESETS[presetKey];
+    const bundledSweep = $('#setting-device-scan-mode').value === '110' && Boolean(preset?.bundledSweep);
+    const prompt = bundledSweep
+      ? `Start the ${preset.label} sweep across ${preset.transponders} transponders? This can take several minutes. The merged lineup and EPG will replace the current files only after completion.`
+      : `Apply the ${preset?.label || 'custom satellite'} profile, then start the Device internal channel scan? Satindex lists ${preset?.transponders ?? 'an unknown number of'} transponders, but the Device may scan only its stored subset.`;
+    if (!window.confirm(prompt)) return;
+    const values = collectSettingsValues();
+    const applied = await postAction('/admin/settings', values, values.persist ? 'Scan settings applied and saved' : 'Scan settings applied');
+    if (!applied) return;
+    state.settingsDirty = false;
+    await postAction('/admin/device/scan', {}, 'Device channel scan started');
   });
   $('#settings-cancel-scan').addEventListener('click', () => postAction('/admin/device/scan-cancel', {}, 'Receiver scan cancelled'));
+  $('#setting-satellite-preset').addEventListener('change', (event) => {
+    applySatellitePreset(event.target.value);
+    state.settingsDirty = true;
+  });
+  $('#setting-device-scan-mode').addEventListener('change', () => {
+    updateScanMethodHelp();
+    state.settingsDirty = true;
+  });
+  ['setting-orbital-tenths', 'setting-orbital-direction', 'setting-lnb-low', 'setting-lnb-high', 'setting-lnb-switch', 'setting-tone'].forEach((id) => {
+    $(`#${id}`).addEventListener('input', () => {
+      $('#setting-satellite-preset').value = matchingSatellitePreset({
+        orbital_tenths: Number($('#setting-orbital-tenths').value || 0),
+        west: $('#setting-orbital-direction').value === '1',
+        lnb_low_mhz: Number($('#setting-lnb-low').value || 0),
+        lnb_high_mhz: Number($('#setting-lnb-high').value || 0),
+        lnb_switch_mhz: Number($('#setting-lnb-switch').value || 0),
+        tone: $('#setting-tone').value
+      });
+      updateSatellitePresetSummary();
+      updateScanMethodHelp();
+    });
+  });
   $('#settings-form').addEventListener('submit', submitSettings);
   $('#settings-form').addEventListener('input', () => { state.settingsDirty = true; });
   $('#settings-form').addEventListener('change', () => { state.settingsDirty = true; });

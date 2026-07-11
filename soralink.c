@@ -180,8 +180,11 @@ typedef struct {
     uint32_t device_scan_timeout_minutes;
     uint32_t device_scan_search_range;
     uint32_t device_scan_order_by;
+    uint32_t device_scan_sort_mode;
+    uint32_t device_scan_mode;
     bool device_scan_network;
     bool device_scan_epg_after;
+    bool device_scan_apply_satellite;
     bool device_update_on_start;
     const char *tls_cert_path;
     const char *tls_key_path;
@@ -255,6 +258,11 @@ typedef struct {
     double scan_started;
     double scan_next_poll;
     double scan_deadline;
+
+    bool scan_transponder_sweep;
+    size_t scan_sweep_index;
+    size_t scan_sweep_total;
+    channel_list_t scan_sweep_channels;
 } device_update_state_t;
 
 typedef struct {
@@ -362,8 +370,11 @@ static void print_usage(const char *program)
         "  --device-epg-refresh-minutes N  Periodic EPG refresh; 0 disables\n"
         "  --device-scan-refresh-minutes N  Periodic receiver scan; 0 disables\n"
         "  --device-scan-timeout-minutes N  Scan timeout (default 30)\n"
+        "  --device-scan-mode N  110=automatic satellite scan, 0=compatibility scan (126 accepted as legacy alias)\n"
+        "  --device-scan-sort-mode N  Receiver sorting code 0..3\n"
         "  --device-scan-network | --no-device-scan-network\n"
         "  --device-scan-epg-after | --no-device-scan-epg-after\n"
+        "  --device-scan-apply-satellite | --no-device-scan-apply-satellite\n"
         "  --device-scan-search-range N  Receiver scan range code 0..7\n"
         "  --device-scan-order-by N  Receiver ordering code 0..3\n"
         "  --device-update-on-start | --no-device-update-on-start\n"
@@ -413,6 +424,16 @@ static bool parse_u32(const char *text, uint32_t *value)
 
     *value = (uint32_t)parsed;
     return true;
+}
+
+static bool normalize_device_scan_mode(uint32_t *value)
+{
+    if (*value == 0U || *value == 110U) return true;
+    if (*value == 126U) {
+        *value = 110U;
+        return true;
+    }
+    return false;
 }
 
 static bool parse_port(const char *text, uint16_t *port)
@@ -697,11 +718,26 @@ static bool apply_config_option(options_t *opt,
         return parse_u32(value, &opt->device_scan_order_by) &&
                opt->device_scan_order_by <= 3U;
     }
+    if (strcmp(key, "device_scan_sort_mode") == 0) {
+        return parse_u32(value, &opt->device_scan_sort_mode) &&
+               opt->device_scan_sort_mode <= 3U;
+    }
+    if (strcmp(key, "device_scan_mode") == 0) {
+        if (!parse_u32(value, &number) ||
+            !normalize_device_scan_mode(&number)) {
+            return false;
+        }
+        opt->device_scan_mode = number;
+        return true;
+    }
     if (strcmp(key, "device_scan_network") == 0) {
         return parse_bool_value(value, &opt->device_scan_network);
     }
     if (strcmp(key, "device_scan_epg_after") == 0) {
         return parse_bool_value(value, &opt->device_scan_epg_after);
+    }
+    if (strcmp(key, "device_scan_apply_satellite") == 0) {
+        return parse_bool_value(value, &opt->device_scan_apply_satellite);
     }
     if (strcmp(key, "device_update_on_start") == 0) {
         return parse_bool_value(value, &opt->device_update_on_start);
@@ -995,11 +1031,14 @@ static bool parse_options(int argc, char **argv, options_t *opt)
     opt->device_channels_refresh_minutes = 1440U;
     opt->device_epg_refresh_minutes = 240U;
     opt->device_scan_refresh_minutes = 0U;
-    opt->device_scan_timeout_minutes = 30U;
+    opt->device_scan_timeout_minutes = 45U;
     opt->device_scan_search_range = 0U;
     opt->device_scan_order_by = 0U;
+    opt->device_scan_sort_mode = 0U;
+    opt->device_scan_mode = 110U;
     opt->device_scan_network = true;
     opt->device_scan_epg_after = true;
+    opt->device_scan_apply_satellite = false;
     opt->device_update_on_start = true;
     opt->program_index = -1;
     opt->channels_path = "channels.xml";
@@ -1142,6 +1181,18 @@ static bool parse_options(int argc, char **argv, options_t *opt)
                 fprintf(stderr, "Invalid --device-scan-order-by value.\n");
                 return false;
             }
+        } else if (strcmp(arg, "--device-scan-mode") == 0 && i + 1 < argc) {
+            if (!parse_u32(argv[++i], &opt->device_scan_mode) ||
+                !normalize_device_scan_mode(&opt->device_scan_mode)) {
+                fprintf(stderr, "Invalid --device-scan-mode value (use 0 or 126; 110 is accepted as a legacy alias).\n");
+                return false;
+            }
+        } else if (strcmp(arg, "--device-scan-sort-mode") == 0 && i + 1 < argc) {
+            if (!parse_u32(argv[++i], &opt->device_scan_sort_mode) ||
+                opt->device_scan_sort_mode > 3U) {
+                fprintf(stderr, "Invalid --device-scan-sort-mode value.\n");
+                return false;
+            }
         } else if (strcmp(arg, "--device-scan-network") == 0) {
             opt->device_scan_network = true;
         } else if (strcmp(arg, "--no-device-scan-network") == 0) {
@@ -1150,6 +1201,10 @@ static bool parse_options(int argc, char **argv, options_t *opt)
             opt->device_scan_epg_after = true;
         } else if (strcmp(arg, "--no-device-scan-epg-after") == 0) {
             opt->device_scan_epg_after = false;
+        } else if (strcmp(arg, "--device-scan-apply-satellite") == 0) {
+            opt->device_scan_apply_satellite = true;
+        } else if (strcmp(arg, "--no-device-scan-apply-satellite") == 0) {
+            opt->device_scan_apply_satellite = false;
         } else if (strcmp(arg, "--device-update-on-start") == 0) {
             opt->device_update_on_start = true;
         } else if (strcmp(arg, "--no-device-update-on-start") == 0) {
@@ -1501,6 +1556,14 @@ static void build_diseqc_config(uint8_t frame[FRAME_SIZE], const options_t *opt)
 
 static void build_satellite_config(uint8_t frame[FRAME_SIZE],
                                    const options_t *opt)
+{
+    build_frame(frame, 2, 0xF6, 9);
+    put_orbital(&frame[21], opt->orbital_tenths, opt->west);
+    frame[23] = build_satellite_flags('O', opt->tone);
+}
+
+static void build_scan_satellite_config(uint8_t frame[FRAME_SIZE],
+                                        const options_t *opt)
 {
     build_frame(frame, 2, 0xF6, 9);
     put_orbital(&frame[21], opt->orbital_tenths, opt->west);
@@ -4355,16 +4418,73 @@ static void build_device_epg_data_request(uint8_t frame[FRAME_SIZE],
     put_u32_be(&frame[25], program_index);
 }
 
-
-#define DEVICE_SCAN_START_ACTION 126U
-#define DEVICE_SCAN_STOP_ACTION  3U
+#define DEVICE_SCAN_AUTOMATIC_ACTION 0U
+#define DEVICE_SCAN_UI_FULL_MODE     110U
+#define DEVICE_SCAN_STOP_ACTION      3U
 #define DEVICE_SCAN_POLL_SECONDS 2.0
+#define DEVICE_SCAN_COMMIT_WAIT_MS 5000U
+#define DEVICE_SCAN_TP_COMMIT_WAIT_MS 1200U
+#define DEVICE_SCAN_TP_TUNE_WAIT_MS 500U
+#define DEVICE_SCAN_SATELLITE_APPLY_WAIT_MS 600U
+#define DEVICE_CHANNEL_DOWNLOAD_ATTEMPTS 6U
+#define DEVICE_CHANNEL_RETRY_BASE_MS 1500U
+
+typedef struct {
+    uint16_t frequency_mhz;
+    uint16_t symbol_rate_ks;
+    char polarization;
+} satellite_transponder_t;
+
+static const satellite_transponder_t astra_19e_transponders[] = {
+    {10729,23500,'V'}, {10758,22000,'V'}, {10773,22000,'H'},
+    {10788,22000,'V'}, {10803,22000,'H'}, {10818,22000,'V'},
+    {10832,22000,'H'}, {10847,22000,'V'}, {10876,22000,'V'},
+    {10891,22000,'H'}, {10906,22000,'V'}, {10921,22000,'H'},
+    {10935,22000,'V'}, {10964,22000,'H'}, {10979,22000,'V'},
+    {10995,22000,'H'}, {11009,23500,'V'}, {11038,22000,'V'},
+    {11053,22000,'H'}, {11068,22000,'V'}, {11082,22000,'H'},
+    {11097,22000,'V'}, {11112,22000,'H'}, {11126,22000,'V'},
+    {11156,22000,'V'}, {11186,22000,'V'}, {11229,22000,'V'},
+    {11244,22000,'H'}, {11259,22000,'V'}, {11273,22000,'H'},
+    {11288,22000,'V'}, {11302,22000,'H'}, {11318,22000,'V'},
+    {11347,22000,'V'}, {11362,22000,'H'}, {11376,22000,'V'},
+    {11391,22000,'H'}, {11421,22000,'H'}, {11464,22000,'H'},
+    {11494,22000,'H'}, {11523,22000,'H'}, {11538,22000,'V'},
+    {11553,22000,'H'}, {11582,22000,'H'}, {11671,22000,'H'},
+    {11694,  940,'V'}, {11739,27500,'V'}, {11758,27500,'H'},
+    {11778,29500,'V'}, {11798,27500,'H'}, {11836,27500,'H'},
+    {11856,29700,'V'}, {11895,29700,'V'}, {11914,27500,'H'},
+    {11934,29700,'V'}, {11954,27500,'H'}, {11973,27500,'V'},
+    {11992,27500,'H'}, {12012,29700,'V'}, {12032,27500,'H'},
+    {12051,27500,'V'}, {12090,29700,'V'}, {12110,27500,'H'},
+    {12148,27500,'H'}, {12168,29700,'V'}, {12188,27500,'H'},
+    {12207,29700,'V'}, {12226,27500,'H'}, {12285,29700,'V'},
+    {12304,27500,'H'}, {12324,29700,'V'}, {12344,27500,'H'},
+    {12363,27500,'V'}, {12382,27500,'H'}, {12402,29700,'V'},
+    {12422,27500,'H'}, {12460,27500,'H'}, {12480,27500,'V'},
+    {12515,22000,'H'}, {12545,22000,'H'}, {12552,22000,'V'},
+    {12574,22000,'H'}, {12604,22000,'H'}, {12610,22000,'V'},
+    {12633,22000,'H'}, {12640,23500,'V'}, {12663,22000,'H'},
+    {12669,23500,'V'}
+};
+
+static bool device_start_sweep_transponder(socket_t *control,
+                                            const options_t *opt,
+                                            device_update_state_t *state);
+
+#if DEVICE_CHANNEL_DOWNLOAD_ATTEMPTS < 2U
+#error "Channel-list handoff requires retries"
+#endif
+#if DEVICE_SCAN_COMMIT_WAIT_MS < 1000U
+#error "Post-scan receiver commit wait is too short"
+#endif
 
 static uint8_t device_scan_flags(const options_t *opt)
 {
     uint8_t flags = opt->device_scan_network ? 0x01U : 0x00U;
     flags |= (uint8_t)((opt->device_scan_order_by & 0x02U) << 1U);
-    flags |= (uint8_t)((opt->device_scan_search_range & 0x07U) << 3U);
+    flags |= (uint8_t)((opt->device_scan_search_range & 0x07U) << 2U);
+    flags |= (uint8_t)((opt->device_scan_sort_mode & 0x03U) << 6U);
     return flags;
 }
 
@@ -4388,14 +4508,158 @@ static bool device_send_scan_action(socket_t *control,
 {
     uint8_t frame[FRAME_SIZE];
     uint8_t response[2U + CSW_SIZE];
+    unsigned attempt;
+
+    for (attempt = 0U; attempt < 2U; ++attempt) {
+        if (*control == SOCKET_INVALID) {
+            if (!reconnect_control_session(control, opt)) return false;
+        }
+        build_device_scan_action_request(frame, opt, action);
+        if (tcp_command(*control, frame, 2U, response, sizeof(response),
+                        opt->verbose) &&
+            response[0] == 0xF6 && response[1] == 0x10) {
+            return true;
+        }
+
+        if (attempt == 0U) {
+            fprintf(stderr,
+                    "Device scan-start acknowledgement was not received; "
+                    "reconnecting and retrying automatic scan.\n");
+            if (*control != SOCKET_INVALID) {
+                CLOSESOCKET(*control);
+                *control = SOCKET_INVALID;
+            }
+            SLEEP_MS(750U);
+        }
+    }
+    return false;
+}
+
+static bool device_prepare_scan_satellite(socket_t *control,
+                                          const options_t *opt)
+{
+    uint8_t frame[FRAME_SIZE];
+    uint8_t response[2U + CSW_SIZE];
+
+    if (!opt->device_scan_apply_satellite) {
+        printf("Receiver scan will use the satellite/LNB profile already stored "
+               "in the device.\n");
+        return *control != SOCKET_INVALID;
+    }
     if (*control == SOCKET_INVALID) return false;
-    build_device_scan_action_request(frame, opt, action);
+
+    printf("Applying scan satellite profile: %u.%u%c, LNB %u/%u, "
+           "switch %u MHz, DiSEqC %u, tone %s.\n",
+           (unsigned)(opt->orbital_tenths / 10U),
+           (unsigned)(opt->orbital_tenths % 10U),
+           opt->west ? 'W' : 'E',
+           (unsigned)opt->lnb_low_mhz,
+           (unsigned)opt->lnb_high_mhz,
+           (unsigned)opt->lnb_switch_mhz,
+           (unsigned)opt->diseqc_port,
+           opt->tone == TONE_ON ? "on" :
+           (opt->tone == TONE_OFF ? "off" : "auto"));
+
+    build_lnb_config(frame, opt);
     if (!tcp_command(*control, frame, 2U, response, sizeof(response),
                      opt->verbose) ||
-        response[0] != 0xF6 || response[1] != 0x10) {
+        response[0] != 0xF6 || response[1] != 0x07) {
+        fprintf(stderr, "Receiver rejected the scan LNB profile.\n");
         return false;
     }
-    return true;
+    SLEEP_MS(80U);
+
+    build_diseqc_config(frame, opt);
+    if (!tcp_command(*control, frame, 2U, response, sizeof(response),
+                     opt->verbose) ||
+        response[0] != 0xF6 || response[1] != 0x08) {
+        fprintf(stderr, "Receiver rejected the scan DiSEqC profile.\n");
+        return false;
+    }
+    SLEEP_MS(80U);
+
+    build_scan_satellite_config(frame, opt);
+    if (opt->verbose) hex_dump("TCP scan satellite profile", frame, FRAME_SIZE);
+    if (!send_all(*control, frame, FRAME_SIZE)) {
+        return false;
+    }
+    SLEEP_MS(DEVICE_SCAN_SATELLITE_APPLY_WAIT_MS);
+    CLOSESOCKET(*control);
+    *control = SOCKET_INVALID;
+    return reconnect_control_session(control, opt);
+}
+
+static bool device_start_sweep_transponder(socket_t *control,
+                                            const options_t *opt,
+                                            device_update_state_t *state)
+{
+    const satellite_transponder_t *tp;
+    options_t tune_opt;
+    uint8_t frame[FRAME_SIZE];
+    uint8_t response[2U + CSW_SIZE];
+    unsigned attempt;
+
+    if (!state->scan_transponder_sweep ||
+        state->scan_sweep_index >= state->scan_sweep_total) {
+        return false;
+    }
+    tp = &astra_19e_transponders[state->scan_sweep_index];
+    tune_opt = *opt;
+    tune_opt.frequency_mhz = tp->frequency_mhz;
+    tune_opt.symbol_rate_ks = tp->symbol_rate_ks;
+    tune_opt.polarization = tp->polarization;
+    tune_opt.tune_mode = TUNE_DVBS;
+
+    for (attempt = 0U; attempt < 2U; ++attempt) {
+        if (*control == SOCKET_INVALID &&
+            !reconnect_control_session(control, opt)) {
+            continue;
+        }
+
+        build_dvbs_tune(frame, &tune_opt);
+        if (!tcp_command(*control, frame, 2U, response, sizeof(response),
+                         opt->verbose) ||
+            response[0] != 0xF6 || response[1] != 0x01) {
+            if (*control != SOCKET_INVALID) {
+                CLOSESOCKET(*control);
+                *control = SOCKET_INVALID;
+            }
+            continue;
+        }
+        SLEEP_MS(DEVICE_SCAN_TP_TUNE_WAIT_MS);
+
+        build_device_scan_action_request(frame, opt,
+                                         DEVICE_SCAN_AUTOMATIC_ACTION);
+        if (tcp_command(*control, frame, 2U, response, sizeof(response),
+                        opt->verbose) &&
+            response[0] == 0xF6 && response[1] == 0x10) {
+            state->scan_frequency_mhz = tp->frequency_mhz;
+            state->scan_symbol_rate_ks = tp->symbol_rate_ks;
+            state->scan_state = 1U;
+            state->scan_next_poll = monotonic_seconds() + 0.5;
+            snprintf(state->last_message, sizeof(state->last_message),
+                     "Astra sweep %zu/%zu: %u MHz %c %u kSym/s",
+                     state->scan_sweep_index + 1U,
+                     state->scan_sweep_total,
+                     (unsigned)tp->frequency_mhz,
+                     tp->polarization,
+                     (unsigned)tp->symbol_rate_ks);
+            printf("Astra sweep %zu/%zu: tuning %u MHz, %c, %u kSym/s.\n",
+                   state->scan_sweep_index + 1U,
+                   state->scan_sweep_total,
+                   (unsigned)tp->frequency_mhz,
+                   tp->polarization,
+                   (unsigned)tp->symbol_rate_ks);
+            return true;
+        }
+
+        if (*control != SOCKET_INVALID) {
+            CLOSESOCKET(*control);
+            *control = SOCKET_INVALID;
+        }
+        SLEEP_MS(600U);
+    }
+    return false;
 }
 
 static void device_scan_mark_stopped(device_update_state_t *state,
@@ -4404,6 +4668,10 @@ static void device_scan_mark_stopped(device_update_state_t *state,
     state->scan_running = false;
     state->scan_cancel_requested = false;
     state->busy = false;
+    state->scan_transponder_sweep = false;
+    state->scan_sweep_index = 0U;
+    state->scan_sweep_total = 0U;
+    free_channel_list(&state->scan_sweep_channels);
     snprintf(state->last_action, sizeof(state->last_action), "scan");
     snprintf(state->last_message, sizeof(state->last_message), "%s", message);
 }
@@ -4421,7 +4689,7 @@ static bool device_start_scan(socket_t *control,
     state->scan_state = 1U;
     state->scan_frequency_mhz = 0U;
     state->scan_symbol_rate_ks = 0U;
-    state->scan_mode = 0U;
+    state->scan_mode = (unsigned)opt->device_scan_mode;
     state->scan_tv_count = 0U;
     state->scan_radio_count = 0U;
     state->last_scan_attempt_utc = (int64_t)time(NULL);
@@ -4430,16 +4698,44 @@ static bool device_start_scan(socket_t *control,
     state->scan_deadline = now + (double)opt->device_scan_timeout_minutes * 60.0;
     snprintf(state->last_action, sizeof(state->last_action), "scan");
     snprintf(state->last_message, sizeof(state->last_message),
-             "Starting receiver channel scan");
+             "Applying satellite profile for receiver scan");
 
-    if (!device_send_scan_action(control, opt, DEVICE_SCAN_START_ACTION)) {
+    if (!device_prepare_scan_satellite(control, opt)) {
+        device_scan_mark_stopped(state,
+                                 "Could not apply receiver scan satellite profile");
+        return false;
+    }
+
+    if (opt->device_scan_mode == DEVICE_SCAN_UI_FULL_MODE &&
+        opt->orbital_tenths == 192U && !opt->west) {
+        state->scan_transponder_sweep = true;
+        state->scan_sweep_index = 0U;
+        state->scan_sweep_total =
+            sizeof(astra_19e_transponders) /
+            sizeof(astra_19e_transponders[0]);
+        free_channel_list(&state->scan_sweep_channels);
+        printf("Starting Astra 19.2E software transponder sweep (%zu frequencies).\n",
+               state->scan_sweep_total);
+        if (!device_start_sweep_transponder(control, opt, state)) {
+            device_scan_mark_stopped(state,
+                                     "Could not start Astra transponder sweep");
+            return false;
+        }
+        return true;
+    }
+
+    snprintf(state->last_message, sizeof(state->last_message),
+             "Starting receiver channel scan");
+    if (!device_send_scan_action(control, opt, DEVICE_SCAN_AUTOMATIC_ACTION)) {
         device_scan_mark_stopped(state, "Receiver rejected channel-scan start");
         return false;
     }
-    printf("Receiver channel scan started (network=%s, range=%u, order=%u).\\n",
+    printf("Receiver channel scan started (wire mode=0 automatic, scope=Device, "
+           "network=%s, range=%u, order=%u, sort=%u).\n",
            opt->device_scan_network ? "yes" : "no",
            (unsigned)opt->device_scan_search_range,
-           (unsigned)opt->device_scan_order_by);
+           (unsigned)opt->device_scan_order_by,
+           (unsigned)opt->device_scan_sort_mode);
     return true;
 }
 
@@ -4453,7 +4749,7 @@ static bool device_cancel_scan(socket_t *control,
     device_scan_mark_stopped(state,
                              sent ? "Receiver channel scan cancelled" :
                                     "Scan cancelled locally; receiver did not acknowledge stop");
-    printf("Receiver channel scan cancelled.\\n");
+    printf("Receiver channel scan cancelled.\n");
     return sent;
 }
 
@@ -4588,6 +4884,8 @@ static bool device_refresh_channels(socket_t *control,
     channel_list_t replacement;
     char candidate_path[1200];
     bool candidate_written = false;
+    bool downloaded = false;
+    unsigned download_attempt;
 
     memset(&replacement, 0, sizeof(replacement));
     state->busy = true;
@@ -4606,14 +4904,51 @@ static bool device_refresh_channels(socket_t *control,
         return false;
     }
 
-    if (!device_download_channel_xml(*control, opt, &xml, &xml_length) ||
+    (void)remove(candidate_path);
+
+    for (download_attempt = 1U;
+         download_attempt <= DEVICE_CHANNEL_DOWNLOAD_ATTEMPTS && g_running;
+         ++download_attempt) {
+        free(xml);
+        xml = NULL;
+        xml_length = 0U;
+
+        if (*control == SOCKET_INVALID &&
+            !reconnect_control_session(control, opt)) {
+            fprintf(stderr,
+                    "Channel-list retry %u/%u could not reconnect.\n",
+                    download_attempt, DEVICE_CHANNEL_DOWNLOAD_ATTEMPTS);
+        } else if (device_download_channel_xml(*control, opt, &xml,
+                                               &xml_length)) {
+            downloaded = true;
+            break;
+        }
+
+        if (download_attempt < DEVICE_CHANNEL_DOWNLOAD_ATTEMPTS) {
+            const unsigned delay_ms = DEVICE_CHANNEL_RETRY_BASE_MS *
+                                      download_attempt;
+            fprintf(stderr,
+                    "Receiver channel database is not ready "
+                    "(attempt %u/%u); waiting %u ms and reconnecting.\n",
+                    download_attempt, DEVICE_CHANNEL_DOWNLOAD_ATTEMPTS,
+                    delay_ms);
+            SLEEP_MS(delay_ms);
+            (void)reconnect_control_session(control, opt);
+        }
+    }
+
+    if (!downloaded ||
         !atomic_write_bytes(candidate_path, xml, xml_length)) {
         free(xml);
-        if (!reconnect_control_session(control, opt)) {
-            fprintf(stderr, "Device control recovery after channel update failed.\n");
+        (void)remove(candidate_path);
+        if (*control == SOCKET_INVALID &&
+            !reconnect_control_session(control, opt)) {
+            fprintf(stderr,
+                    "Device control recovery after channel update failed.\n");
         }
         snprintf(state->last_message, sizeof(state->last_message),
-                 "Device channel update failed");
+                 "Device channel update failed after %u attempts",
+                 DEVICE_CHANNEL_DOWNLOAD_ATTEMPTS);
         state->busy = false;
         return false;
     }
@@ -4626,6 +4961,22 @@ static bool device_refresh_channels(socket_t *control,
         free(xml);
         snprintf(state->last_message, sizeof(state->last_message),
                  "Downloaded channel XML could not be parsed");
+        state->busy = false;
+        return false;
+    }
+
+    if (channels != NULL && channels->count >= 20U &&
+        replacement.count < (channels->count + 1U) / 2U) {
+        fprintf(stderr,
+                "Warning: receiver returned only %zu channels; preserving "
+                "the existing %zu-channel lineup.\n",
+                replacement.count, channels->count);
+        snprintf(state->last_message, sizeof(state->last_message),
+                 "Receiver lineup rejected as incomplete: %zu received, %zu kept",
+                 replacement.count, channels->count);
+        free_channel_list(&replacement);
+        (void)remove(candidate_path);
+        free(xml);
         state->busy = false;
         return false;
     }
@@ -5111,6 +5462,267 @@ static bool device_refresh_epg(socket_t *control,
 }
 
 
+static bool sweep_channel_same(const channel_t *a, const channel_t *b)
+{
+    if (a->have_program_index && b->have_program_index &&
+        a->program_index == b->program_index) return true;
+    return a->service_id == b->service_id &&
+           a->transport_stream_id == b->transport_stream_id &&
+           a->frequency_mhz == b->frequency_mhz &&
+           a->polarization == b->polarization;
+}
+
+static bool sweep_channel_matches_tp(const channel_t *channel,
+                                     const satellite_transponder_t *tp)
+{
+    const uint32_t a = channel->frequency_mhz;
+    const uint32_t b = tp->frequency_mhz;
+    const uint32_t difference = a > b ? a - b : b - a;
+    return difference <= 2U &&
+           channel->polarization == tp->polarization &&
+           channel->symbol_rate_ks == tp->symbol_rate_ks;
+}
+
+static bool sweep_append_channel(channel_list_t *list,
+                                 const channel_t *channel)
+{
+    size_t i;
+    channel_t *items;
+    for (i = 0U; i < list->count; ++i) {
+        if (sweep_channel_same(&list->items[i], channel)) return true;
+    }
+    if (list->count == SIZE_MAX / sizeof(*items)) return false;
+    items = (channel_t *)realloc(list->items,
+                                (list->count + 1U) * sizeof(*items));
+    if (items == NULL) return false;
+    list->items = items;
+    list->items[list->count] = *channel;
+    ++list->count;
+    return true;
+}
+
+static bool device_sweep_collect_current(socket_t *control,
+                                         const options_t *opt,
+                                         device_update_state_t *state,
+                                         size_t *added)
+{
+    const satellite_transponder_t *tp =
+        &astra_19e_transponders[state->scan_sweep_index];
+    uint8_t *xml = NULL;
+    size_t xml_length = 0U;
+    char path[1200];
+    channel_list_t snapshot;
+    size_t i;
+    unsigned attempt;
+    bool downloaded = false;
+
+    *added = 0U;
+    memset(&snapshot, 0, sizeof(snapshot));
+    if (snprintf(path, sizeof(path), "%s.sweep-current",
+                 opt->channels_path) < 0 ||
+        strlen(opt->channels_path) + strlen(".sweep-current") >= sizeof(path)) {
+        return false;
+    }
+    (void)remove(path);
+
+    for (attempt = 1U;
+         attempt <= DEVICE_CHANNEL_DOWNLOAD_ATTEMPTS && g_running;
+         ++attempt) {
+        free(xml);
+        xml = NULL;
+        xml_length = 0U;
+        if (*control == SOCKET_INVALID &&
+            !reconnect_control_session(control, opt)) {
+            downloaded = false;
+        } else if (device_download_channel_xml(*control, opt,
+                                               &xml, &xml_length)) {
+            downloaded = true;
+            break;
+        }
+
+        if (attempt < DEVICE_CHANNEL_DOWNLOAD_ATTEMPTS) {
+            const unsigned delay_ms = 500U * attempt;
+            fprintf(stderr,
+                    "Astra sweep %zu/%zu: Device database not ready "
+                    "(attempt %u/%u); retrying in %u ms.\n",
+                    state->scan_sweep_index + 1U,
+                    state->scan_sweep_total,
+                    attempt, DEVICE_CHANNEL_DOWNLOAD_ATTEMPTS,
+                    delay_ms);
+            SLEEP_MS(delay_ms);
+            if (*control != SOCKET_INVALID) {
+                CLOSESOCKET(*control);
+                *control = SOCKET_INVALID;
+            }
+        }
+    }
+    if (!downloaded) {
+        free(xml);
+        return false;
+    }
+
+    if (!atomic_write_bytes(path, xml, xml_length)) {
+        free(xml);
+        return false;
+    }
+    free(xml);
+    if (!load_channel_list(path, &snapshot)) {
+        (void)remove(path);
+        return false;
+    }
+    (void)remove(path);
+
+    for (i = 0U; i < snapshot.count; ++i) {
+        if (sweep_channel_matches_tp(&snapshot.items[i], tp)) {
+            const size_t before = state->scan_sweep_channels.count;
+            if (!sweep_append_channel(&state->scan_sweep_channels,
+                                      &snapshot.items[i])) {
+                free_channel_list(&snapshot);
+                return false;
+            }
+            if (state->scan_sweep_channels.count > before) ++*added;
+        }
+    }
+    free_channel_list(&snapshot);
+    return true;
+}
+
+static bool write_sweep_channel_list(const char *path,
+                                     channel_list_t *list,
+                                     const channel_list_t *previous)
+{
+    char temporary[1200];
+    FILE *file;
+    size_t i;
+
+    if (snprintf(temporary, sizeof(temporary), "%s.tmp", path) < 0 ||
+        strlen(path) + 4U >= sizeof(temporary)) return false;
+    preserve_channel_epg_ids(list, previous);
+    for (i = 0U; i < list->count; ++i) {
+        list->items[i].lcn = (uint32_t)(i + 1U);
+        if (list->items[i].epg_id[0] == '\0') {
+            snprintf(list->items[i].epg_id,
+                     sizeof(list->items[i].epg_id), "%u",
+                     (unsigned)list->items[i].lcn);
+        }
+    }
+
+    file = fopen(temporary, "wb");
+    if (file == NULL) return false;
+    if (fputs("<ch_List>\n", file) == EOF) goto fail;
+    for (i = 0U; i < list->count; ++i) {
+        const channel_t *ch = &list->items[i];
+        if (fprintf(file,
+                    "<ch type=\"%s\" pol=\"%c\" sym=\"%u\" "
+                    "s_id=\"%u\" ts_id=\"%u\" freq=\"%u\" ",
+                    ch->type, ch->polarization,
+                    (unsigned)ch->symbol_rate_ks,
+                    (unsigned)ch->service_id,
+                    (unsigned)ch->transport_stream_id,
+                    (unsigned)ch->frequency_mhz) < 0) goto fail;
+        if (ch->have_program_index &&
+            fprintf(file, "prog_idx=\"%u\" ",
+                    (unsigned)ch->program_index) < 0) goto fail;
+        if (fprintf(file, "lcn=\"%u\" s_name=\"",
+                    (unsigned)ch->lcn) < 0 ||
+            !xml_write_escaped(file, ch->name) ||
+            fprintf(file, "\" fta=\"%u\" epg_id=\"",
+                    ch->fta ? 1U : 0U) < 0 ||
+            !xml_write_escaped(file, ch->epg_id) ||
+            fputs("\" />\n", file) == EOF) goto fail;
+    }
+    if (fputs("</ch_List>\n", file) == EOF ||
+        fflush(file) != 0 || fclose(file) != 0) goto fail_closed;
+#ifdef _WIN32
+    if (!MoveFileExA(temporary, path,
+                     MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        remove(temporary);
+        return false;
+    }
+#else
+    if (rename(temporary, path) != 0) {
+        remove(temporary);
+        return false;
+    }
+#endif
+    return true;
+fail:
+    fclose(file);
+fail_closed:
+    remove(temporary);
+    return false;
+}
+
+static void sweep_count_channel_types(const channel_list_t *list,
+                                      unsigned *tv_count,
+                                      unsigned *radio_count)
+{
+    size_t i;
+    unsigned tv = 0U;
+    unsigned radio = 0U;
+    for (i = 0U; i < list->count; ++i) {
+        if (strcmp(list->items[i].type, "RADIO") == 0) ++radio;
+        else ++tv;
+    }
+    *tv_count = tv;
+    *radio_count = radio;
+}
+
+static bool device_finish_transponder_sweep(socket_t *control,
+                                            const options_t *opt,
+                                            channel_list_t *channels,
+                                            epg_list_t *epg,
+                                            device_update_state_t *state,
+                                            tuning_state_t *tuning)
+{
+    channel_list_t completed = state->scan_sweep_channels;
+    state->scan_sweep_channels.items = NULL;
+    state->scan_sweep_channels.count = 0U;
+
+    if (completed.count == 0U) {
+        free_channel_list(&completed);
+        device_scan_mark_stopped(state,
+                                 "Astra transponder sweep found no channels");
+        return false;
+    }
+    if (!write_sweep_channel_list(opt->channels_path, &completed, channels)) {
+        free_channel_list(&completed);
+        device_scan_mark_stopped(state,
+                                 "Could not install Astra sweep channel list");
+        return false;
+    }
+
+    free_channel_list(channels);
+    *channels = completed;
+    state->scan_running = false;
+    state->scan_transponder_sweep = false;
+    state->busy = false;
+    state->scan_progress = 100U;
+    state->last_channels_success_utc = (int64_t)time(NULL);
+    printf("Astra 19.2E sweep complete: %zu unique services installed.\n",
+           channels->count);
+
+    if (opt->device_scan_epg_after &&
+        !device_refresh_epg(control, opt, channels, epg, state, true)) {
+        memset(tuning, 0, sizeof(*tuning));
+        return false;
+    }
+    state->last_scan_success_utc = (int64_t)time(NULL);
+    snprintf(state->last_action, sizeof(state->last_action), "scan");
+    snprintf(state->last_message, sizeof(state->last_message),
+             "Astra sweep complete: %zu services; %zu EPG channels updated",
+             channels->count, state->last_epg_updated_channels);
+    state->next_channels_due = monotonic_seconds() +
+        (double)opt->device_channels_refresh_minutes * 60.0;
+    state->next_epg_due = monotonic_seconds() +
+        (double)opt->device_epg_refresh_minutes * 60.0;
+    state->next_scan_due = monotonic_seconds() +
+        (double)opt->device_scan_refresh_minutes * 60.0;
+    memset(tuning, 0, sizeof(*tuning));
+    return true;
+}
+
+
 static bool device_scan_step(socket_t *control,
                              const options_t *opt,
                              channel_list_t *channels,
@@ -5121,6 +5733,9 @@ static bool device_scan_step(socket_t *control,
     uint8_t frame[FRAME_SIZE];
     uint8_t response[17U + CSW_SIZE];
     const double now = monotonic_seconds();
+    unsigned raw_progress;
+    unsigned raw_tv_count;
+    unsigned raw_radio_count;
 
     if (!state->scan_running) return true;
     if (state->scan_cancel_requested) {
@@ -5130,7 +5745,10 @@ static bool device_scan_step(socket_t *control,
     }
     if (now >= state->scan_deadline) {
         (void)device_send_scan_action(control, opt, DEVICE_SCAN_STOP_ACTION);
-        device_scan_mark_stopped(state, "Receiver channel scan timed out");
+        device_scan_mark_stopped(state,
+            state->scan_transponder_sweep
+                ? "Astra transponder sweep timed out"
+                : "Receiver channel scan timed out");
         memset(tuning, 0, sizeof(*tuning));
         return false;
     }
@@ -5141,10 +5759,13 @@ static bool device_scan_step(socket_t *control,
         !tcp_command(*control, frame, 17U, response, sizeof(response),
                      opt->verbose) ||
         response[0] != 0xF6 || response[1] != 0x02) {
-        fprintf(stderr, "Receiver scan-status poll failed; reconnecting.\\n");
+        fprintf(stderr, "%s scan-status poll failed; reconnecting.\n",
+                state->scan_transponder_sweep ? "Astra sweep" : "Receiver");
         if (!reconnect_control_session(control, opt)) {
             device_scan_mark_stopped(state,
-                                     "Channel scan stopped: control reconnect failed");
+                state->scan_transponder_sweep
+                    ? "Astra sweep stopped: control reconnect failed"
+                    : "Channel scan stopped: control reconnect failed");
             return false;
         }
         state->scan_next_poll = monotonic_seconds() + DEVICE_SCAN_POLL_SECONDS;
@@ -5152,15 +5773,122 @@ static bool device_scan_step(socket_t *control,
     }
 
     state->scan_state = response[5];
-    state->scan_progress = response[6];
+    raw_progress = response[6] > 100U ? 100U : response[6];
+    raw_tv_count = read_u16_be(&response[13]);
+    raw_radio_count = read_u16_be(&response[15]);
+    state->scan_mode = response[12];
+    state->scan_next_poll = now + DEVICE_SCAN_POLL_SECONDS;
+
+    if (state->scan_transponder_sweep) {
+        const satellite_transponder_t *tp =
+            &astra_19e_transponders[state->scan_sweep_index];
+        unsigned accumulated_tv;
+        unsigned accumulated_radio;
+        const size_t numerator = state->scan_sweep_index * 100U + raw_progress;
+
+        sweep_count_channel_types(&state->scan_sweep_channels,
+                                  &accumulated_tv, &accumulated_radio);
+        state->scan_progress = state->scan_sweep_total > 0U
+            ? (unsigned)(numerator / state->scan_sweep_total) : 0U;
+        if (state->scan_progress > 99U &&
+            state->scan_sweep_index + 1U < state->scan_sweep_total) {
+            state->scan_progress = 99U;
+        }
+        state->scan_frequency_mhz = tp->frequency_mhz;
+        state->scan_symbol_rate_ks = tp->symbol_rate_ks;
+        state->scan_tv_count = accumulated_tv;
+        state->scan_radio_count = accumulated_radio;
+
+        if (state->scan_state == 1U) {
+            snprintf(state->last_message, sizeof(state->last_message),
+                     "Astra sweep %zu/%zu: %u MHz %c, TP %u%%; %u services merged",
+                     state->scan_sweep_index + 1U,
+                     state->scan_sweep_total,
+                     (unsigned)tp->frequency_mhz,
+                     tp->polarization,
+                     raw_progress,
+                     accumulated_tv + accumulated_radio);
+            printf("Astra sweep %zu/%zu: %u MHz %c %u kSym/s, "
+                   "TP %u%%, reported TV %u/radio %u, merged %u.\n",
+                   state->scan_sweep_index + 1U,
+                   state->scan_sweep_total,
+                   (unsigned)tp->frequency_mhz,
+                   tp->polarization,
+                   (unsigned)tp->symbol_rate_ks,
+                   raw_progress,
+                   raw_tv_count,
+                   raw_radio_count,
+                   accumulated_tv + accumulated_radio);
+            return true;
+        }
+
+        if (state->scan_state != 0U) {
+            device_scan_mark_stopped(state,
+                                     "Device reported an invalid Astra sweep state");
+            memset(tuning, 0, sizeof(*tuning));
+            return false;
+        }
+
+        {
+            size_t added = 0U;
+            bool collected;
+
+            printf("Astra sweep %zu/%zu: transponder scan complete; "
+                   "waiting for Device database commit.\n",
+                   state->scan_sweep_index + 1U,
+                   state->scan_sweep_total);
+            SLEEP_MS(DEVICE_SCAN_TP_COMMIT_WAIT_MS);
+
+            if (*control != SOCKET_INVALID) {
+                CLOSESOCKET(*control);
+                *control = SOCKET_INVALID;
+            }
+            collected = reconnect_control_session(control, opt) &&
+                        device_sweep_collect_current(control, opt, state, &added);
+            if (!collected) {
+                fprintf(stderr,
+                        "Warning: Astra sweep %zu/%zu could not download the "
+                        "current transponder result; continuing.\n",
+                        state->scan_sweep_index + 1U,
+                        state->scan_sweep_total);
+            } else {
+                sweep_count_channel_types(&state->scan_sweep_channels,
+                                          &accumulated_tv, &accumulated_radio);
+                state->scan_tv_count = accumulated_tv;
+                state->scan_radio_count = accumulated_radio;
+                printf("Astra sweep %zu/%zu: added %zu service%s; "
+                       "%zu unique services merged.\n",
+                       state->scan_sweep_index + 1U,
+                       state->scan_sweep_total,
+                       added, added == 1U ? "" : "s",
+                       state->scan_sweep_channels.count);
+            }
+        }
+
+        ++state->scan_sweep_index;
+        if (state->scan_sweep_index < state->scan_sweep_total) {
+            state->scan_progress = (unsigned)
+                ((state->scan_sweep_index * 100U) / state->scan_sweep_total);
+            if (!device_start_sweep_transponder(control, opt, state)) {
+                device_scan_mark_stopped(state,
+                                         "Could not start the next Astra transponder");
+                memset(tuning, 0, sizeof(*tuning));
+                return false;
+            }
+            return true;
+        }
+
+        return device_finish_transponder_sweep(control, opt, channels, epg,
+                                               state, tuning);
+    }
+
+    state->scan_progress = raw_progress;
     state->scan_frequency_mhz = ((uint32_t)response[7] << 16) |
                                 ((uint32_t)response[8] << 8) |
                                 (uint32_t)response[9];
     state->scan_symbol_rate_ks = read_u16_be(&response[10]);
-    state->scan_mode = response[12];
-    state->scan_tv_count = read_u16_be(&response[13]);
-    state->scan_radio_count = read_u16_be(&response[15]);
-    state->scan_next_poll = now + DEVICE_SCAN_POLL_SECONDS;
+    state->scan_tv_count = raw_tv_count;
+    state->scan_radio_count = raw_radio_count;
 
     if (state->scan_state == 1U) {
         snprintf(state->last_message, sizeof(state->last_message),
@@ -5169,7 +5897,7 @@ static bool device_scan_step(socket_t *control,
                  (unsigned)state->scan_frequency_mhz,
                  (unsigned)state->scan_symbol_rate_ks,
                  state->scan_tv_count, state->scan_radio_count);
-        printf("Receiver scan: %u%%, %u MHz, %u kSym/s, TV %u, radio %u.\\n",
+        printf("Receiver scan: %u%%, %u MHz, %u kSym/s, TV %u, radio %u.\n",
                state->scan_progress,
                (unsigned)state->scan_frequency_mhz,
                (unsigned)state->scan_symbol_rate_ks,
@@ -5183,12 +5911,24 @@ static bool device_scan_step(socket_t *control,
         return false;
     }
 
-    printf("Receiver scan completed: TV %u, radio %u. Downloading lineup.\\n",
+    printf("Receiver scan completed: TV %u, radio %u. "
+           "Waiting for receiver database commit.\n",
            state->scan_tv_count, state->scan_radio_count);
     state->scan_running = false;
+    state->busy = true;
     snprintf(state->last_message, sizeof(state->last_message),
-             "Scan complete; downloading channel list");
-    SLEEP_MS(1000);
+             "Scan complete; waiting for receiver database commit");
+
+    SLEEP_MS(DEVICE_SCAN_COMMIT_WAIT_MS);
+    if (!reconnect_control_session(control, opt)) {
+        device_scan_mark_stopped(
+            state, "Scan completed, but post-scan reconnect failed");
+        memset(tuning, 0, sizeof(*tuning));
+        return false;
+    }
+
+    snprintf(state->last_message, sizeof(state->last_message),
+             "Receiver database committed; downloading channel list");
 
     state->busy = false;
     if (!device_refresh_channels(control, opt, channels, state)) {
@@ -5222,6 +5962,7 @@ static bool device_scan_step(socket_t *control,
 
 static void device_update_state_free(device_update_state_t *state)
 {
+    free_channel_list(&state->scan_sweep_channels);
     memset(state, 0, sizeof(*state));
 }
 
@@ -6277,8 +7018,18 @@ static bool live_config_key(const char *key)
            strcmp(key, "device_scan_timeout_minutes") == 0 ||
            strcmp(key, "device_scan_search_range") == 0 ||
            strcmp(key, "device_scan_order_by") == 0 ||
+           strcmp(key, "device_scan_sort_mode") == 0 ||
+           strcmp(key, "device_scan_mode") == 0 ||
            strcmp(key, "device_scan_network") == 0 ||
            strcmp(key, "device_scan_epg_after") == 0 ||
+           strcmp(key, "device_scan_apply_satellite") == 0 ||
+           strcmp(key, "orbital") == 0 ||
+           strcmp(key, "west") == 0 ||
+           strcmp(key, "tone") == 0 ||
+           strcmp(key, "lnb_low") == 0 ||
+           strcmp(key, "lnb_high") == 0 ||
+           strcmp(key, "lnb_switch") == 0 ||
+           strcmp(key, "diseqc") == 0 ||
            strcmp(key, "device_update_on_start") == 0;
 }
 
@@ -6300,8 +7051,18 @@ static bool update_live_config_file(const options_t *opt)
     bool wrote_device_scan_timeout = false;
     bool wrote_device_scan_range = false;
     bool wrote_device_scan_order = false;
+    bool wrote_device_scan_sort = false;
+    bool wrote_device_scan_mode = false;
     bool wrote_device_scan_network = false;
     bool wrote_device_scan_epg = false;
+    bool wrote_device_scan_apply_satellite = false;
+    bool wrote_orbital = false;
+    bool wrote_west = false;
+    bool wrote_tone = false;
+    bool wrote_lnb_low = false;
+    bool wrote_lnb_high = false;
+    bool wrote_lnb_switch = false;
+    bool wrote_diseqc = false;
     bool wrote_device_start = false;
 
     if (opt->config_path == NULL ||
@@ -6380,6 +7141,14 @@ static bool update_live_config_file(const options_t *opt)
                     fprintf(output, "device_scan_order_by=%u\n",
                             (unsigned)opt->device_scan_order_by);
                     wrote_device_scan_order = true;
+                } else if (strcmp(key, "device_scan_sort_mode") == 0) {
+                    fprintf(output, "device_scan_sort_mode=%u\n",
+                            (unsigned)opt->device_scan_sort_mode);
+                    wrote_device_scan_sort = true;
+                } else if (strcmp(key, "device_scan_mode") == 0) {
+                    fprintf(output, "device_scan_mode=%u\n",
+                            (unsigned)opt->device_scan_mode);
+                    wrote_device_scan_mode = true;
                 } else if (strcmp(key, "device_scan_network") == 0) {
                     fprintf(output, "device_scan_network=%s\n",
                             opt->device_scan_network ? "true" : "false");
@@ -6388,6 +7157,35 @@ static bool update_live_config_file(const options_t *opt)
                     fprintf(output, "device_scan_epg_after=%s\n",
                             opt->device_scan_epg_after ? "true" : "false");
                     wrote_device_scan_epg = true;
+                } else if (strcmp(key, "device_scan_apply_satellite") == 0) {
+                    fprintf(output, "device_scan_apply_satellite=%s\n",
+                            opt->device_scan_apply_satellite ? "true" : "false");
+                    wrote_device_scan_apply_satellite = true;
+                } else if (strcmp(key, "orbital") == 0) {
+                    fprintf(output, "orbital=%u\n",
+                            (unsigned)opt->orbital_tenths);
+                    wrote_orbital = true;
+                } else if (strcmp(key, "west") == 0) {
+                    fprintf(output, "west=%s\n", opt->west ? "true" : "false");
+                    wrote_west = true;
+                } else if (strcmp(key, "tone") == 0) {
+                    fprintf(output, "tone=%s\n",
+                            opt->tone == TONE_ON ? "on" :
+                            (opt->tone == TONE_OFF ? "off" : "auto"));
+                    wrote_tone = true;
+                } else if (strcmp(key, "lnb_low") == 0) {
+                    fprintf(output, "lnb_low=%u\n", (unsigned)opt->lnb_low_mhz);
+                    wrote_lnb_low = true;
+                } else if (strcmp(key, "lnb_high") == 0) {
+                    fprintf(output, "lnb_high=%u\n", (unsigned)opt->lnb_high_mhz);
+                    wrote_lnb_high = true;
+                } else if (strcmp(key, "lnb_switch") == 0) {
+                    fprintf(output, "lnb_switch=%u\n",
+                            (unsigned)opt->lnb_switch_mhz);
+                    wrote_lnb_switch = true;
+                } else if (strcmp(key, "diseqc") == 0) {
+                    fprintf(output, "diseqc=%u\n", (unsigned)opt->diseqc_port);
+                    wrote_diseqc = true;
                 } else {
                     fprintf(output, "device_update_on_start=%s\n",
                             opt->device_update_on_start ? "true" : "false");
@@ -6435,12 +7233,37 @@ static bool update_live_config_file(const options_t *opt)
     if (!wrote_device_scan_order)
         fprintf(output, "device_scan_order_by=%u\n",
                 (unsigned)opt->device_scan_order_by);
+    if (!wrote_device_scan_sort)
+        fprintf(output, "device_scan_sort_mode=%u\n",
+                (unsigned)opt->device_scan_sort_mode);
+    if (!wrote_device_scan_mode)
+        fprintf(output, "device_scan_mode=%u\n",
+                (unsigned)opt->device_scan_mode);
     if (!wrote_device_scan_network)
         fprintf(output, "device_scan_network=%s\n",
                 opt->device_scan_network ? "true" : "false");
     if (!wrote_device_scan_epg)
         fprintf(output, "device_scan_epg_after=%s\n",
                 opt->device_scan_epg_after ? "true" : "false");
+    if (!wrote_device_scan_apply_satellite)
+        fprintf(output, "device_scan_apply_satellite=%s\n",
+                opt->device_scan_apply_satellite ? "true" : "false");
+    if (!wrote_orbital)
+        fprintf(output, "orbital=%u\n", (unsigned)opt->orbital_tenths);
+    if (!wrote_west)
+        fprintf(output, "west=%s\n", opt->west ? "true" : "false");
+    if (!wrote_tone)
+        fprintf(output, "tone=%s\n",
+                opt->tone == TONE_ON ? "on" :
+                (opt->tone == TONE_OFF ? "off" : "auto"));
+    if (!wrote_lnb_low)
+        fprintf(output, "lnb_low=%u\n", (unsigned)opt->lnb_low_mhz);
+    if (!wrote_lnb_high)
+        fprintf(output, "lnb_high=%u\n", (unsigned)opt->lnb_high_mhz);
+    if (!wrote_lnb_switch)
+        fprintf(output, "lnb_switch=%u\n", (unsigned)opt->lnb_switch_mhz);
+    if (!wrote_diseqc)
+        fprintf(output, "diseqc=%u\n", (unsigned)opt->diseqc_port);
     if (!wrote_device_start)
         fprintf(output, "device_update_on_start=%s\n",
                 opt->device_update_on_start ? "true" : "false");
@@ -7064,15 +7887,36 @@ static void serve_admin_api_status(http_connection_t *connection,
             ",\"device_update_on_start\":%s,"
             "\"device_scan_network\":%s,"
             "\"device_scan_epg_after\":%s,"
+            "\"device_scan_apply_satellite\":%s,"
             "\"device_scan_timeout_minutes\":%u,"
             "\"device_scan_search_range\":%u,"
-            "\"device_scan_order_by\":%u",
+            "\"device_scan_order_by\":%u,"
+            "\"device_scan_sort_mode\":%u,"
+            "\"device_scan_mode\":%u,"
+            "\"orbital_tenths\":%u,"
+            "\"west\":%s,"
+            "\"tone\":\"%s\","
+            "\"lnb_low_mhz\":%u,"
+            "\"lnb_high_mhz\":%u,"
+            "\"lnb_switch_mhz\":%u,"
+            "\"diseqc_port\":%u",
             opt->device_update_on_start ? "true" : "false",
             opt->device_scan_network ? "true" : "false",
             opt->device_scan_epg_after ? "true" : "false",
+            opt->device_scan_apply_satellite ? "true" : "false",
             (unsigned)opt->device_scan_timeout_minutes,
             (unsigned)opt->device_scan_search_range,
-            (unsigned)opt->device_scan_order_by) ||
+            (unsigned)opt->device_scan_order_by,
+            (unsigned)opt->device_scan_sort_mode,
+            (unsigned)opt->device_scan_mode,
+            (unsigned)opt->orbital_tenths,
+            opt->west ? "true" : "false",
+            opt->tone == TONE_ON ? "on" :
+            (opt->tone == TONE_OFF ? "off" : "auto"),
+            (unsigned)opt->lnb_low_mhz,
+            (unsigned)opt->lnb_high_mhz,
+            (unsigned)opt->lnb_switch_mhz,
+            (unsigned)opt->diseqc_port) ||
         !string_buffer_appendf(&body,
             "},\"epg\":{\"programmes\":%zu,\"loaded_utc\":%lld},"
             "\"device_updates\":{\"busy\":%s,"
@@ -7509,8 +8353,18 @@ static void handle_admin_post(http_connection_t *connection,
         char device_scan_timeout_text[32];
         char device_scan_range_text[32];
         char device_scan_order_text[32];
+        char device_scan_sort_text[32];
+        char device_scan_mode_text[32];
         char device_scan_network_text[8];
         char device_scan_epg_text[8];
+        char device_scan_apply_satellite_text[8];
+        char orbital_text[32];
+        char west_text[8];
+        char tone_text[16];
+        char lnb_low_text[32];
+        char lnb_high_text[32];
+        char lnb_switch_text[32];
+        char diseqc_text[32];
         uint32_t max_clients;
         uint32_t wait_ms;
         uint32_t timeout_ms;
@@ -7520,6 +8374,13 @@ static void handle_admin_post(http_connection_t *connection,
         uint32_t device_scan_timeout;
         uint32_t device_scan_range;
         uint32_t device_scan_order;
+        uint32_t device_scan_sort;
+        uint32_t device_scan_mode;
+        uint32_t orbital;
+        uint32_t lnb_low;
+        uint32_t lnb_high;
+        uint32_t lnb_switch;
+        uint32_t diseqc;
         const size_t active = http_stream_client_count(stream);
         const bool persist = form_get_value(body, "persist", persist_text,
                                              sizeof(persist_text)) &&
@@ -7538,8 +8399,18 @@ static void handle_admin_post(http_connection_t *connection,
             !form_get_value(body, "device_scan_timeout_minutes", device_scan_timeout_text, sizeof(device_scan_timeout_text)) ||
             !form_get_value(body, "device_scan_search_range", device_scan_range_text, sizeof(device_scan_range_text)) ||
             !form_get_value(body, "device_scan_order_by", device_scan_order_text, sizeof(device_scan_order_text)) ||
+            !form_get_value(body, "device_scan_sort_mode", device_scan_sort_text, sizeof(device_scan_sort_text)) ||
+            !form_get_value(body, "device_scan_mode", device_scan_mode_text, sizeof(device_scan_mode_text)) ||
             !form_get_value(body, "device_scan_network", device_scan_network_text, sizeof(device_scan_network_text)) ||
             !form_get_value(body, "device_scan_epg_after", device_scan_epg_text, sizeof(device_scan_epg_text)) ||
+            !form_get_value(body, "device_scan_apply_satellite", device_scan_apply_satellite_text, sizeof(device_scan_apply_satellite_text)) ||
+            !form_get_value(body, "orbital_tenths", orbital_text, sizeof(orbital_text)) ||
+            !form_get_value(body, "west", west_text, sizeof(west_text)) ||
+            !form_get_value(body, "tone", tone_text, sizeof(tone_text)) ||
+            !form_get_value(body, "lnb_low_mhz", lnb_low_text, sizeof(lnb_low_text)) ||
+            !form_get_value(body, "lnb_high_mhz", lnb_high_text, sizeof(lnb_high_text)) ||
+            !form_get_value(body, "lnb_switch_mhz", lnb_switch_text, sizeof(lnb_switch_text)) ||
+            !form_get_value(body, "diseqc_port", diseqc_text, sizeof(diseqc_text)) ||
             !parse_u32(max_text, &max_clients) || max_clients == 0U ||
             max_clients > HTTP_CLIENT_LIMIT || max_clients < active ||
             !parse_u32(wait_text, &wait_ms) || wait_ms > 60000U ||
@@ -7557,8 +8428,20 @@ static void handle_admin_post(http_connection_t *connection,
             device_scan_range > 7U ||
             !parse_u32(device_scan_order_text, &device_scan_order) ||
             device_scan_order > 3U ||
+            !parse_u32(device_scan_sort_text, &device_scan_sort) ||
+            device_scan_sort > 3U ||
+            !parse_u32(device_scan_mode_text, &device_scan_mode) ||
+            !normalize_device_scan_mode(&device_scan_mode) ||
+            !parse_u32(orbital_text, &orbital) || orbital > 32767U ||
+            !parse_u32(lnb_low_text, &lnb_low) || lnb_low > 65535U ||
+            !parse_u32(lnb_high_text, &lnb_high) || lnb_high > 65535U ||
+            !parse_u32(lnb_switch_text, &lnb_switch) || lnb_switch > 65535U ||
+            !parse_u32(diseqc_text, &diseqc) || diseqc > 255U ||
             (strcmp(device_scan_network_text, "0") != 0 && strcmp(device_scan_network_text, "1") != 0) ||
             (strcmp(device_scan_epg_text, "0") != 0 && strcmp(device_scan_epg_text, "1") != 0) ||
+            (strcmp(device_scan_apply_satellite_text, "0") != 0 && strcmp(device_scan_apply_satellite_text, "1") != 0) ||
+            (strcmp(west_text, "0") != 0 && strcmp(west_text, "1") != 0) ||
+            (strcmp(tone_text, "auto") != 0 && strcmp(tone_text, "on") != 0 && strcmp(tone_text, "off") != 0) ||
             (strcmp(device_channels_text, "0") != 0 && strcmp(device_channels_text, "1") != 0) ||
             (strcmp(device_epg_text, "0") != 0 && strcmp(device_epg_text, "1") != 0) ||
             (strcmp(device_start_text, "0") != 0 && strcmp(device_start_text, "1") != 0) ||
@@ -7591,8 +8474,20 @@ static void handle_admin_post(http_connection_t *connection,
         opt->device_scan_timeout_minutes = device_scan_timeout;
         opt->device_scan_search_range = device_scan_range;
         opt->device_scan_order_by = device_scan_order;
+        opt->device_scan_sort_mode = device_scan_sort;
+        opt->device_scan_mode = device_scan_mode;
         opt->device_scan_network = strcmp(device_scan_network_text, "1") == 0;
         opt->device_scan_epg_after = strcmp(device_scan_epg_text, "1") == 0;
+        opt->device_scan_apply_satellite =
+            strcmp(device_scan_apply_satellite_text, "1") == 0;
+        opt->orbital_tenths = orbital;
+        opt->west = strcmp(west_text, "1") == 0;
+        opt->tone = strcmp(tone_text, "on") == 0 ? TONE_ON :
+                    (strcmp(tone_text, "off") == 0 ? TONE_OFF : TONE_AUTO);
+        opt->lnb_low_mhz = lnb_low;
+        opt->lnb_high_mhz = lnb_high;
+        opt->lnb_switch_mhz = lnb_switch;
+        opt->diseqc_port = diseqc;
         updates->next_channels_due = monotonic_seconds() +
             (double)device_channels_minutes * 60.0;
         updates->next_epg_due = monotonic_seconds() +
@@ -8279,13 +9174,36 @@ static bool run_self_tests(void)
         decoded_chunked = NULL;
     }
 
+    memset(&tone_test_opt, 0, sizeof(tone_test_opt));
+    tone_test_opt.device_scan_network = true;
+    tone_test_opt.device_scan_order_by = 3U;
+    tone_test_opt.device_scan_search_range = 5U;
+    tone_test_opt.device_scan_sort_mode = 2U;
+    tone_test_opt.device_scan_mode = DEVICE_SCAN_UI_FULL_MODE;
     build_device_scan_action_request(frame, &tone_test_opt,
-                                     DEVICE_SCAN_START_ACTION);
-    TEST_CHECK(frame[20] == 0x10 && frame[21] == 0x7E,
-               "Receiver scan-start command uses APIX 0x10/action 0x7E");
+                                     DEVICE_SCAN_AUTOMATIC_ACTION);
+    TEST_CHECK(frame[20] == 0x10 && frame[21] == 0x00U,
+               "Device automatic satellite scan uses APIX 0x10/wire mode 0");
+    TEST_CHECK(frame[22] == 0x95U,
+               "Device scan flags match the APK bit layout");
+    tone_test_opt.orbital_tenths = 192U;
+    tone_test_opt.west = false;
+    tone_test_opt.tone = TONE_AUTO;
+    build_scan_satellite_config(frame, &tone_test_opt);
+    TEST_CHECK(frame[20] == 0x09 && frame[21] == 0x00 &&
+               frame[22] == 0xC0 && frame[23] == 0x04U,
+               "Automatic scan satellite profile uses POL_ON with automatic tone");
     build_device_scan_status_request(frame);
     TEST_CHECK(frame[20] == 0x02 && frame[11] == 17,
-               "Receiver scan-status request asks for 17 data bytes");
+               "Device scan-status request asks for 17 data bytes");
+    TEST_CHECK(sizeof(astra_19e_transponders) /
+               sizeof(astra_19e_transponders[0]) == 88U,
+               "Astra 19.2E sweep contains 88 transponders");
+    TEST_CHECK(astra_19e_transponders[0].frequency_mhz == 10729U &&
+               astra_19e_transponders[0].polarization == 'V' &&
+               astra_19e_transponders[87].frequency_mhz == 12669U &&
+               astra_19e_transponders[87].polarization == 'V',
+               "Astra transponder sweep boundaries are intact");
 
     build_permission_claim(frame);
     memset(response, 0, sizeof(response));

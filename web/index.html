@@ -76,9 +76,20 @@
               </div>
             </div>
 
+            <div class="hero-space-art" aria-hidden="true">
+              <div class="hero-orbits"></div>
+              <div class="hero-horizon"></div>
+              <div class="hero-dish">
+                <span class="dish-bowl"></span>
+                <span class="dish-feed"></span>
+                <span class="dish-mast"></span>
+              </div>
+              <div class="hero-console-deck"></div>
+            </div>
+
             <div class="mascot-stage" aria-label="SORALink mascot">
               <div class="mascot-halo"></div>
-              <img src="/admin/assets/soralink-mascot.png" alt="Full-body SORALink mascot">
+              <img src="/admin/assets/soralink-mascot.png" alt="Seated SORALink mascot presenting Mission Control">
             </div>
           </article>
 
@@ -271,18 +282,56 @@
               <label><span>Network timeout</span><div class="unit-field"><input id="setting-timeout-ms" name="timeout_ms" type="number" min="100" max="60000" required><b>ms</b></div></label>
               <label><span>Missing stream key policy</span><select id="setting-missing-key" name="missing_key"><option value="pass">Pass encrypted packets</option><option value="drop">Drop encrypted packets</option></select></label>
               <div class="settings-section-title"><span>Receiver data maintenance</span><small>Scheduled jobs only run when no viewers are connected.</small></div>
-              <label class="toggle-row"><input id="setting-device-channels-update" type="checkbox"><span><b>Automatic channel-list updates</b><small>Download channels.xml from the OR S2D.</small></span></label>
+              <label class="toggle-row"><input id="setting-device-channels-update" type="checkbox"><span><b>Automatic channel-list updates</b><small>Download channels.xml from the Device.</small></span></label>
               <label><span>Channel refresh interval</span><div class="unit-field"><input id="setting-device-channels-minutes" type="number" min="0" max="10080" required><b>min</b></div></label>
-              <label class="toggle-row"><input id="setting-device-epg-update" type="checkbox"><span><b>Automatic native EPG updates</b><small>Download the DVB EPG cache stored by the OR S2D.</small></span></label>
+              <label class="toggle-row"><input id="setting-device-epg-update" type="checkbox"><span><b>Automatic native EPG updates</b><small>Download the DVB EPG cache stored by the Device.</small></span></label>
               <label><span>EPG refresh interval</span><div class="unit-field"><input id="setting-device-epg-minutes" type="number" min="0" max="10080" required><b>min</b></div></label>
               <label class="toggle-row"><input id="setting-device-update-start" type="checkbox"><span><b>Update during startup</b><small>Run enabled receiver updates before serving clients.</small></span></label>
-              <div class="settings-section-title"><span>Receiver channel scan</span><small>Manual or scheduled scans rebuild the dongle lineup and populate its DVB EPG cache. Scans only start while idle.</small></div>
+              <div class="settings-section-title"><span>Receiver channel scan</span><small>Manual or scheduled scans rebuild the Device lineup and populate its DVB EPG cache. Scans only start while idle.</small></div>
               <label><span>Automatic scan interval</span><div class="unit-field"><input id="setting-device-scan-minutes" type="number" min="0" max="10080" required><b>min</b></div></label>
               <label><span>Scan timeout</span><div class="unit-field"><input id="setting-device-scan-timeout" type="number" min="1" max="120" required><b>min</b></div></label>
+              <label class="full-row"><span>Scan method</span><select id="setting-device-scan-mode"><option value="110">Astra 19.2°E full sweep · 88 transponders</option><option value="0">Device internal scan · stored transponder table</option></select><small class="field-help" id="scan-mode-help">The Astra sweep tunes and scans every bundled Astra 19.2°E transponder, then merges the services locally.</small></label>
+              <label><span>Sort mode</span><select id="setting-device-scan-sort"><option value="0">Device default</option><option value="1">Service name</option><option value="2">Service type</option><option value="3">Frequency/order</option></select></label>
               <label><span>Search range code</span><input id="setting-device-scan-range" type="number" min="0" max="7" required></label>
               <label><span>Ordering code</span><input id="setting-device-scan-order" type="number" min="0" max="3" required></label>
-              <label class="toggle-row"><input id="setting-device-scan-network" type="checkbox"><span><b>Network scan</b><small>Follow DVB network information while scanning, matching the Android app option.</small></span></label>
-              <label class="toggle-row"><input id="setting-device-scan-epg" type="checkbox"><span><b>Download EPG after scan</b><small>Refresh channels.xml and epg.xml after the receiver reports completion.</small></span></label>
+              <label class="toggle-row"><input id="setting-device-scan-network" type="checkbox"><span><b>Network scan</b><small>Follow DVB network information while scanning, matching the Device option.</small></span></label>
+              <label class="toggle-row"><input id="setting-device-scan-epg" type="checkbox"><span><b>Download EPG after scan</b><small>Refresh channels.xml and epg.xml after the Device reports completion.</small></span></label>
+
+              <div class="settings-section-title"><span>Satellite and LNB profile</span><small>Select a preset or choose Custom. Presets use a universal Ku-band LNB; DiSEqC remains installation-specific.</small></div>
+              <label class="full-row satellite-preset-row"><span>Satellite preset</span><select id="setting-satellite-preset">
+                <optgroup label="West">
+                  <option value="hispasat-30w">Hispasat 30.0° West · 23 TP</option>
+                  <option value="eutelsat-5w">Eutelsat 5.0° West · 10 TP</option>
+                  <option value="amos-4w">Amos 4.0° West · 2 TP</option>
+                  <option value="thor-0.8w">Thor 0.8° West · 65 TP</option>
+                </optgroup>
+                <optgroup label="East">
+                  <option value="bulgariasat-1.9e">BulgariaSat 1.9° East · 16 TP</option>
+                  <option value="astra-4.8e">Astra 4.8° East · 14 TP</option>
+                  <option value="eutelsat-7e">Eutelsat 7.0° East · 11 TP</option>
+                  <option value="eutelsat-9e">Eutelsat 9.0° East · 26 TP</option>
+                  <option value="hotbird-13e">Hot Bird 13.0° East · 73 TP</option>
+                  <option value="eutelsat-16e">Eutelsat 16.0° East · 40 TP</option>
+                  <option value="astra-19.2e">Astra 19.2° East · 88 TP · bundled sweep</option>
+                  <option value="astra-23.5e">Astra 23.5° East · 26 TP</option>
+                  <option value="badr-26e">Badr 26.0° East · 15 TP</option>
+                  <option value="astra-28.2e">Astra 28.2° East · 59 TP</option>
+                  <option value="eutelsat-33e">Eutelsat 33.0° East · 1 TP</option>
+                  <option value="hellas-sat-39e">Hellas Sat 39.0° East · 30 TP</option>
+                  <option value="turksat-42e">Türksat 42.0° East · 43 TP</option>
+                  <option value="intelsat-45e">Intelsat 45.0° East · 1 TP</option>
+                  <option value="monacosat-52e">MonacoSat 52.0° East · 22 TP</option>
+                </optgroup>
+                <option value="custom">Custom satellite/LNB</option>
+              </select><small class="field-help" id="satellite-preset-summary">Astra 19.2°E · 88 Satindex transponders · Universal LNB 9750/10600 MHz</small></label>
+              <label class="toggle-row"><input id="setting-device-scan-apply-satellite" type="checkbox"><span><b>Apply selected satellite profile before scan</b><small>Enable this when SORALink should configure orbital position, LNB and DiSEqC. Leave disabled to use the profile already stored by the Device.</small></span></label>
+              <label><span>Orbital position</span><div class="unit-field"><input id="setting-orbital-tenths" type="number" min="0" max="32767" required><b>0.1°</b></div></label>
+              <label><span>Orbital direction</span><select id="setting-orbital-direction"><option value="0">East</option><option value="1">West</option></select></label>
+              <label><span>LNB low oscillator</span><div class="unit-field"><input id="setting-lnb-low" type="number" min="0" max="65535" required><b>MHz</b></div></label>
+              <label><span>LNB high oscillator</span><div class="unit-field"><input id="setting-lnb-high" type="number" min="0" max="65535" required><b>MHz</b></div></label>
+              <label><span>LNB switch frequency</span><div class="unit-field"><input id="setting-lnb-switch" type="number" min="0" max="65535" required><b>MHz</b></div></label>
+              <label><span>DiSEqC input</span><select id="setting-diseqc-port"><option value="0">Direct / none</option><option value="1">Port A / input 1</option><option value="2">Port B / input 2</option><option value="3">Port C / input 3</option><option value="4">Port D / input 4</option></select></label>
+              <label><span>22 kHz tone</span><select id="setting-tone"><option value="auto">Automatic</option><option value="on">Always on</option><option value="off">Always off</option></select></label>
               <div class="scan-status-card" id="receiver-scan-status"><div><span>Receiver scan</span><strong id="receiver-scan-title">Idle</strong><small id="receiver-scan-detail">No scan is running.</small></div><div class="scan-progress"><i id="receiver-scan-progress"></i></div><div class="scan-counts"><span>TV <b id="receiver-scan-tv">0</b></span><span>Radio <b id="receiver-scan-radio">0</b></span></div></div>
               <div class="device-action-row"><button class="secondary-button" id="settings-update-channels" type="button">Update channels now</button><button class="secondary-button" id="settings-update-epg" type="button">Update EPG now</button><button class="secondary-button" id="settings-update-all" type="button">Update all now</button><button class="primary-button" id="settings-start-scan" type="button">Scan + collect EPG</button><button class="danger-button" id="settings-cancel-scan" type="button">Cancel scan</button></div>
               <label class="toggle-row"><input id="setting-persist" type="checkbox"><span><b>Persist changes</b><small>Write the values back to the active configuration file.</small></span></label>
