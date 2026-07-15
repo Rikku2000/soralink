@@ -70,6 +70,12 @@ static void sleep_ms(unsigned milliseconds)
 #define XML_FILE_LIMIT        (64U * 1024U * 1024U)
 #define HTTP_DOWNLOAD_HEADER_LIMIT (64U * 1024U)
 #define HTTP_REDIRECT_LIMIT    5
+#define ADMIN_SESSION_LIMIT     16
+#define ADMIN_SESSION_TOKEN_BYTES 32
+#define ADMIN_SESSION_TOKEN_HEX (ADMIN_SESSION_TOKEN_BYTES * 2)
+#define ADMIN_SESSION_LIFETIME_SECONDS (12U * 60U * 60U)
+#define ADMIN_LOGIN_FAILURE_LIMIT 5U
+#define ADMIN_LOGIN_LOCK_SECONDS 15U
 
 #define FRAME_SIZE       31
 #define CSW_SIZE         13
@@ -119,6 +125,9 @@ typedef struct {
     char web_root[1024];
     char epg_path[1024];
     char epg_url[2048];
+    char config_path[1024];
+    char satellite_preset[128];
+    char transponder_table_path[1024];
 } option_text_storage_t;
 
 typedef struct {
@@ -185,12 +194,27 @@ typedef struct {
     bool device_scan_network;
     bool device_scan_epg_after;
     bool device_scan_apply_satellite;
+    const char *satellite_preset;
+    bool satellite_preset_explicit;
+    const char *transponder_table_path;
     bool device_update_on_start;
     const char *tls_cert_path;
     const char *tls_key_path;
     const char *config_path;
     option_text_storage_t text;
 } options_t;
+
+typedef struct {
+    bool active;
+    char token[ADMIN_SESSION_TOKEN_HEX + 1U];
+    double expires_at;
+} admin_session_t;
+
+typedef struct {
+    admin_session_t items[ADMIN_SESSION_LIMIT];
+    unsigned failed_attempts;
+    double blocked_until;
+} admin_session_store_t;
 
 typedef struct {
     char type[8];
@@ -229,6 +253,12 @@ typedef struct {
 } epg_list_t;
 
 typedef struct {
+    uint16_t frequency_mhz;
+    uint16_t symbol_rate_ks;
+    char polarization;
+} satellite_transponder_t;
+
+typedef struct {
     bool busy;
     int64_t last_channels_attempt_utc;
     int64_t last_channels_success_utc;
@@ -262,6 +292,8 @@ typedef struct {
     bool scan_transponder_sweep;
     size_t scan_sweep_index;
     size_t scan_sweep_total;
+    satellite_transponder_t *scan_sweep_transponders;
+    char scan_sweep_label[96];
     channel_list_t scan_sweep_channels;
 } device_update_state_t;
 
@@ -352,7 +384,7 @@ static void print_usage(const char *program)
         "  --max-clients N      Simultaneous viewers of one channel (default 8)\n"
         "  --http-user USER     Viewer HTTP Basic username\n"
         "  --http-password PASS Viewer HTTP Basic password\n"
-        "  --admin-user USER    Web UI administrator username\n"
+        "  --admin-user USER    Web UI administrator username (session login popup)\n"
         "  --admin-password PASS Web UI administrator password\n"
         "  --webui              Enable the administration Web UI (default)\n"
         "  --no-webui           Disable the administration Web UI\n"
@@ -370,7 +402,9 @@ static void print_usage(const char *program)
         "  --device-epg-refresh-minutes N  Periodic EPG refresh; 0 disables\n"
         "  --device-scan-refresh-minutes N  Periodic receiver scan; 0 disables\n"
         "  --device-scan-timeout-minutes N  Scan timeout (default 30)\n"
-        "  --device-scan-mode N  110=automatic satellite scan, 0=compatibility scan (126 accepted as legacy alias)\n"
+        "  --device-scan-mode N  110=full preset sweep, 0=device stored-table quick scan (126 accepted as legacy alias)\n"
+        "  --satellite-preset KEY  Preset section used by a full transponder sweep\n"
+        "  --transponder-table FILE  Full-sweep table file (default: transponders.conf beside binary)\n"
         "  --device-scan-sort-mode N  Receiver sorting code 0..3\n"
         "  --device-scan-network | --no-device-scan-network\n"
         "  --device-scan-epg-after | --no-device-scan-epg-after\n"
@@ -381,7 +415,8 @@ static void print_usage(const char *program)
         "  --tls-cert FILE      TLS certificate PEM (requires OpenSSL build)\n"
         "  --tls-key FILE       TLS private-key PEM (requires OpenSSL build)\n\n"
         "Configuration:\n"
-        "  --config FILE        Load key=value settings before CLI overrides\n\n"
+        "  --config FILE        Load key=value settings before CLI overrides\n"
+        "  soralink.conf        Auto-loaded beside the executable when present; CLI overrides it\n\n"
         "Other options:\n"
         "  --vlc-ip HOST        UDP-mode VLC DNS/IPv4/IPv6 destination\n"
         "  --vlc-port N         UDP-mode VLC port (default 1234)\n"
@@ -739,6 +774,33 @@ static bool apply_config_option(options_t *opt,
     if (strcmp(key, "device_scan_apply_satellite") == 0) {
         return parse_bool_value(value, &opt->device_scan_apply_satellite);
     }
+    if (strcmp(key, "satellite_preset") == 0 ||
+        strcmp(key, "scan_preset") == 0) {
+        size_t i;
+        if (*value == '\0' || strlen(value) >= sizeof(opt->text.satellite_preset)) {
+            return false;
+        }
+        for (i = 0U; value[i] != '\0'; ++i) {
+            const unsigned char ch = (unsigned char)value[i];
+            if (!(isalnum(ch) || ch == '-' || ch == '_' || ch == '.')) {
+                return false;
+            }
+        }
+        if (!store_config_text(opt->text.satellite_preset,
+                               sizeof(opt->text.satellite_preset), value,
+                               &opt->satellite_preset, false)) {
+            return false;
+        }
+        opt->satellite_preset_explicit = true;
+        return true;
+    }
+    if (strcmp(key, "transponder_table") == 0 ||
+        strcmp(key, "transponder_table_path") == 0 ||
+        strcmp(key, "scan_table") == 0) {
+        return store_config_text(opt->text.transponder_table_path,
+                                 sizeof(opt->text.transponder_table_path), value,
+                                 &opt->transponder_table_path, true);
+    }
     if (strcmp(key, "device_update_on_start") == 0) {
         return parse_bool_value(value, &opt->device_update_on_start);
     }
@@ -987,6 +1049,24 @@ static bool set_program_relative_path(char *storage,
     }
 }
 
+static bool default_config_is_present(const char *path)
+{
+    FILE *file;
+    if (path == NULL || *path == '\0') {
+        return false;
+    }
+    errno = 0;
+    file = fopen(path, "rb");
+    if (file != NULL) {
+        fclose(file);
+        return true;
+    }
+    if (errno != ENOENT) {
+        return true;
+    }
+    return false;
+}
+
 static bool parse_options(int argc, char **argv, options_t *opt)
 {
     int i;
@@ -1039,6 +1119,9 @@ static bool parse_options(int argc, char **argv, options_t *opt)
     opt->device_scan_network = true;
     opt->device_scan_epg_after = true;
     opt->device_scan_apply_satellite = false;
+    snprintf(opt->text.satellite_preset, sizeof(opt->text.satellite_preset),
+             "%s", "custom");
+    opt->satellite_preset = opt->text.satellite_preset;
     opt->device_update_on_start = true;
     opt->program_index = -1;
     opt->channels_path = "channels.xml";
@@ -1046,16 +1129,32 @@ static bool parse_options(int argc, char **argv, options_t *opt)
     opt->http_port = 8080;
     opt->max_http_clients = 8;
     opt->web_ui = true;
-    opt->config_path = config_path;
     if (!set_program_relative_path(opt->text.web_root,
                                    sizeof(opt->text.web_root), argv[0],
                                    "web", &opt->web_root) ||
         !set_program_relative_path(opt->text.epg_path,
                                    sizeof(opt->text.epg_path), argv[0],
-                                   "epg.xml", &opt->epg_path)) {
+                                   "epg.xml", &opt->epg_path) ||
+        !set_program_relative_path(opt->text.transponder_table_path,
+                                   sizeof(opt->text.transponder_table_path), argv[0],
+                                   "transponders.conf", &opt->transponder_table_path)) {
         fprintf(stderr, "Program path is too long.\n");
         return false;
     }
+
+    if (config_path == NULL) {
+        const char *automatic_config = NULL;
+        if (!set_program_relative_path(opt->text.config_path,
+                                       sizeof(opt->text.config_path), argv[0],
+                                       "soralink.conf", &automatic_config)) {
+            fprintf(stderr, "Program path is too long.\n");
+            return false;
+        }
+        if (default_config_is_present(automatic_config)) {
+            config_path = automatic_config;
+        }
+    }
+    opt->config_path = config_path;
 
     if (config_path != NULL &&
         !load_config_file(opt, config_path, &have_freq, &have_sr,
@@ -1184,9 +1283,29 @@ static bool parse_options(int argc, char **argv, options_t *opt)
         } else if (strcmp(arg, "--device-scan-mode") == 0 && i + 1 < argc) {
             if (!parse_u32(argv[++i], &opt->device_scan_mode) ||
                 !normalize_device_scan_mode(&opt->device_scan_mode)) {
-                fprintf(stderr, "Invalid --device-scan-mode value (use 0 or 126; 110 is accepted as a legacy alias).\n");
+                fprintf(stderr, "Invalid --device-scan-mode value (use 0 or 110; 126 is accepted as a legacy alias).\n");
                 return false;
             }
+        } else if (strcmp(arg, "--satellite-preset") == 0 && i + 1 < argc) {
+            const char *value = argv[++i];
+            size_t j;
+            if (*value == '\0' || strlen(value) >= sizeof(opt->text.satellite_preset)) {
+                fprintf(stderr, "Invalid --satellite-preset value.\n");
+                return false;
+            }
+            for (j = 0U; value[j] != '\0'; ++j) {
+                const unsigned char ch = (unsigned char)value[j];
+                if (!(isalnum(ch) || ch == '-' || ch == '_' || ch == '.')) {
+                    fprintf(stderr, "Invalid --satellite-preset value.\n");
+                    return false;
+                }
+            }
+            snprintf(opt->text.satellite_preset,
+                     sizeof(opt->text.satellite_preset), "%s", value);
+            opt->satellite_preset = opt->text.satellite_preset;
+            opt->satellite_preset_explicit = true;
+        } else if (strcmp(arg, "--transponder-table") == 0 && i + 1 < argc) {
+            opt->transponder_table_path = argv[++i];
         } else if (strcmp(arg, "--device-scan-sort-mode") == 0 && i + 1 < argc) {
             if (!parse_u32(argv[++i], &opt->device_scan_sort_mode) ||
                 opt->device_scan_sort_mode > 3U) {
@@ -3921,6 +4040,120 @@ static char *find_xml_tag_end(char *start)
     return NULL;
 }
 
+static char *skip_channel_xml_preamble(char *cursor)
+{
+    if (strncmp(cursor, "\xEF\xBB\xBF", 3U) == 0) {
+        cursor += 3;
+    }
+    for (;;) {
+        while (isspace((unsigned char)*cursor)) ++cursor;
+        if (strncmp(cursor, "<?", 2U) == 0) {
+            char *end = strstr(cursor + 2, "?>");
+            if (end == NULL) return NULL;
+            cursor = end + 2;
+            continue;
+        }
+        if (strncmp(cursor, "<!--", 4U) == 0) {
+            char *end = strstr(cursor + 4, "-->");
+            if (end == NULL) return NULL;
+            cursor = end + 3;
+            continue;
+        }
+        if (STRNCASECMP(cursor, "<!DOCTYPE", 9U) == 0) {
+            char *end = find_xml_tag_end(cursor);
+            if (end == NULL) return NULL;
+            cursor = end + 1;
+            continue;
+        }
+        return cursor;
+    }
+}
+
+static bool channel_xml_has_valid_root(char *document)
+{
+    char *root = skip_channel_xml_preamble(document);
+    char *root_end;
+    char *before_end;
+    const char *closing_tag;
+
+    if (root == NULL) return false;
+
+    if (strncmp(root, "<channels", 9U) == 0 &&
+        (isspace((unsigned char)root[9]) || root[9] == '>' ||
+         root[9] == '/')) {
+        closing_tag = "</channels>";
+    } else if (strncmp(root, "<ch_List", 8U) == 0 &&
+               (isspace((unsigned char)root[8]) || root[8] == '>' ||
+                root[8] == '/')) {
+        closing_tag = "</ch_List>";
+    } else {
+        return false;
+    }
+
+    root_end = find_xml_tag_end(root);
+    if (root_end == NULL) return false;
+
+    before_end = root_end;
+    while (before_end > root &&
+           isspace((unsigned char)before_end[-1])) {
+        --before_end;
+    }
+    if (before_end > root && before_end[-1] == '/') {
+        return true;
+    }
+    return strstr(root_end + 1, closing_tag) != NULL;
+}
+
+static bool ensure_default_channel_list(const char *path)
+{
+    static const char default_xml[] =
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        "<ch_List>\n"
+        "</ch_List>\n";
+    FILE *file;
+    int open_error;
+
+    if (path == NULL || *path == '\0') {
+        fprintf(stderr, "No channel-list path is configured.\n");
+        return false;
+    }
+
+    file = fopen(path, "rb");
+    if (file != NULL) {
+        fclose(file);
+        return true;
+    }
+    open_error = errno;
+    if (open_error != ENOENT) {
+        fprintf(stderr, "Cannot inspect channel list '%s': %s\n",
+                path, strerror(open_error));
+        return false;
+    }
+
+    file = fopen(path, "wb");
+    if (file == NULL) {
+        fprintf(stderr, "Cannot create default channel list '%s': %s\n",
+                path, strerror(errno));
+        return false;
+    }
+    {
+        const bool wrote_all =
+            fwrite(default_xml, 1U, sizeof(default_xml) - 1U, file) ==
+            sizeof(default_xml) - 1U;
+        const int close_result = fclose(file);
+        if (!wrote_all || close_result != 0) {
+            const int write_error = errno != 0 ? errno : EIO;
+            remove(path);
+            fprintf(stderr, "Cannot write default channel list '%s': %s\n",
+                    path, strerror(write_error));
+            return false;
+        }
+    }
+
+    printf("Created default empty channel list at %s.\n", path);
+    return true;
+}
+
 static bool load_channel_list(const char *path, channel_list_t *list)
 {
     FILE *file;
@@ -3962,6 +4195,15 @@ static bool load_channel_list(const char *path, channel_list_t *list)
     }
     fclose(file);
     document[file_length] = '\0';
+
+    if (!channel_xml_has_valid_root(document)) {
+        fprintf(stderr,
+                "Channel XML '%s' does not contain a supported "
+                "<channels> or <ch_List> root.\n",
+                path);
+        free(document);
+        return false;
+    }
 
     cursor = document;
     while ((cursor = strstr(cursor, "<ch")) != NULL) {
@@ -4016,9 +4258,13 @@ static bool load_channel_list(const char *path, channel_list_t *list)
                 malformed);
     }
     if (list->count == 0U) {
-        fprintf(stderr, "No usable channels found in '%s'.\n", path);
-        free_channel_list(list);
-        return false;
+        if (malformed > 0U) {
+            fprintf(stderr, "No usable channels found in '%s'.\n", path);
+            free_channel_list(list);
+            return false;
+        }
+        printf("Loaded empty channel list from %s.\n", path);
+        return true;
     }
 
     printf("Loaded %zu channels from %s.\n", list->count, path);
@@ -4429,44 +4675,223 @@ static void build_device_epg_data_request(uint8_t frame[FRAME_SIZE],
 #define DEVICE_CHANNEL_DOWNLOAD_ATTEMPTS 6U
 #define DEVICE_CHANNEL_RETRY_BASE_MS 1500U
 
-typedef struct {
-    uint16_t frequency_mhz;
-    uint16_t symbol_rate_ks;
-    char polarization;
-} satellite_transponder_t;
-
 static const satellite_transponder_t astra_19e_transponders[] = {
     {10729,23500,'V'}, {10758,22000,'V'}, {10773,22000,'H'},
-    {10788,22000,'V'}, {10803,22000,'H'}, {10818,22000,'V'},
+    {10788,22000,'V'}, {10802,22000,'H'}, {10817,22000,'V'},
     {10832,22000,'H'}, {10847,22000,'V'}, {10876,22000,'V'},
     {10891,22000,'H'}, {10906,22000,'V'}, {10921,22000,'H'},
-    {10935,22000,'V'}, {10964,22000,'H'}, {10979,22000,'V'},
-    {10995,22000,'H'}, {11009,23500,'V'}, {11038,22000,'V'},
-    {11053,22000,'H'}, {11068,22000,'V'}, {11082,22000,'H'},
-    {11097,22000,'V'}, {11112,22000,'H'}, {11126,22000,'V'},
+    {10936,22000,'V'}, {10964,22000,'H'}, {10979,22000,'V'},
+    {10993,22000,'H'}, {11009,23500,'V'}, {11038,22000,'V'},
+    {11052,22000,'H'}, {11067,22000,'V'}, {11082,22000,'H'},
+    {11097,22000,'V'}, {11112,22000,'H'}, {11127,22000,'V'},
     {11156,22000,'V'}, {11186,22000,'V'}, {11229,22000,'V'},
     {11244,22000,'H'}, {11259,22000,'V'}, {11273,22000,'H'},
-    {11288,22000,'V'}, {11302,22000,'H'}, {11318,22000,'V'},
-    {11347,22000,'V'}, {11362,22000,'H'}, {11376,22000,'V'},
-    {11391,22000,'H'}, {11421,22000,'H'}, {11464,22000,'H'},
-    {11494,22000,'H'}, {11523,22000,'H'}, {11538,22000,'V'},
-    {11553,22000,'H'}, {11582,22000,'H'}, {11671,22000,'H'},
-    {11694,  940,'V'}, {11739,27500,'V'}, {11758,27500,'H'},
-    {11778,29500,'V'}, {11798,27500,'H'}, {11836,27500,'H'},
-    {11856,29700,'V'}, {11895,29700,'V'}, {11914,27500,'H'},
-    {11934,29700,'V'}, {11954,27500,'H'}, {11973,27500,'V'},
-    {11992,27500,'H'}, {12012,29700,'V'}, {12032,27500,'H'},
-    {12051,27500,'V'}, {12090,29700,'V'}, {12110,27500,'H'},
-    {12148,27500,'H'}, {12168,29700,'V'}, {12188,27500,'H'},
-    {12207,29700,'V'}, {12226,27500,'H'}, {12285,29700,'V'},
-    {12304,27500,'H'}, {12324,29700,'V'}, {12344,27500,'H'},
-    {12363,27500,'V'}, {12382,27500,'H'}, {12402,29700,'V'},
-    {12422,27500,'H'}, {12460,27500,'H'}, {12480,27500,'V'},
-    {12515,22000,'H'}, {12545,22000,'H'}, {12552,22000,'V'},
-    {12574,22000,'H'}, {12604,22000,'H'}, {12610,22000,'V'},
-    {12633,22000,'H'}, {12640,23500,'V'}, {12663,22000,'H'},
-    {12669,23500,'V'}
+    {11288,22000,'V'}, {11303,22000,'H'}, {11318,22000,'V'},
+    {11347,22000,'V'}, {11362,22000,'H'}, {11377,22000,'V'},
+    {11391,22000,'H'}, {11406,23500,'V'}, {11420,22000,'H'},
+    {11429,7500,'V'}, {11464,22000,'H'}, {11494,22000,'H'},
+    {11509,22000,'V'}, {11523,22000,'H'}, {11538,22000,'V'},
+    {11553,22000,'H'}, {11561,7200,'V'}, {11582,22000,'H'},
+    {11605,7200,'H'}, {11618,7200,'H'}, {11633,7200,'V'},
+    {11648,7200,'V'}, {11671,22000,'H'}, {11694,940,'V'},
+    {11697,2915,'V'}, {11739,27500,'V'}, {11758,27500,'H'},
+    {11778,29500,'V'}, {11798,27500,'H'}, {11817,31428,'V'},
+    {11836,27500,'H'}, {11856,29700,'V'}, {11895,29700,'V'},
+    {11914,27500,'H'}, {11934,29700,'V'}, {11953,27500,'H'},
+    {11973,27500,'V'}, {11992,27500,'H'}, {12012,29700,'V'},
+    {12032,27500,'H'}, {12051,27500,'V'}, {12070,31428,'H'},
+    {12090,29700,'V'}, {12110,27500,'H'}, {12148,27500,'H'},
+    {12168,29700,'V'}, {12188,27500,'H'}, {12207,29700,'V'},
+    {12226,27500,'H'}, {12285,29700,'V'}, {12304,27500,'H'},
+    {12324,29700,'V'}, {12344,27500,'H'}, {12363,27500,'V'},
+    {12382,27500,'H'}, {12402,29700,'V'}, {12422,27500,'H'},
+    {12460,27500,'H'}, {12480,27500,'V'}, {12515,22000,'H'},
+    {12545,22000,'H'}, {12552,22000,'V'}, {12574,22000,'H'},
+    {12604,22000,'H'}, {12610,22000,'V'}, {12633,22000,'H'},
+    {12640,23500,'V'}, {12663,22000,'H'}, {12669,23500,'V'}
 };
+
+static bool transponder_array_append(satellite_transponder_t **items,
+                                     size_t *count,
+                                     uint32_t frequency,
+                                     char polarization,
+                                     uint32_t symbol_rate)
+{
+    satellite_transponder_t *resized;
+    if (frequency == 0U || frequency > UINT16_MAX ||
+        symbol_rate == 0U || symbol_rate > UINT16_MAX ||
+        (polarization != 'H' && polarization != 'V')) {
+        return false;
+    }
+    if (*count == SIZE_MAX / sizeof(**items)) return false;
+    resized = (satellite_transponder_t *)realloc(
+        *items, (*count + 1U) * sizeof(**items));
+    if (resized == NULL) return false;
+    *items = resized;
+    resized[*count].frequency_mhz = (uint16_t)frequency;
+    resized[*count].symbol_rate_ks = (uint16_t)symbol_rate;
+    resized[*count].polarization = polarization;
+    ++*count;
+    return true;
+}
+
+static bool load_transponder_table_section(const char *path,
+                                           const char *preset,
+                                           satellite_transponder_t **items,
+                                           size_t *count,
+                                           char *message,
+                                           size_t message_size)
+{
+    FILE *file;
+    char line[512];
+    unsigned line_number = 0U;
+    bool in_section = false;
+    bool saw_section = false;
+
+    *items = NULL;
+    *count = 0U;
+    if (path == NULL || *path == '\0') {
+        snprintf(message, message_size, "No transponder table file is configured");
+        return false;
+    }
+    file = fopen(path, "rb");
+    if (file == NULL) {
+        snprintf(message, message_size,
+                 "Transponder table '%s' could not be opened", path);
+        return false;
+    }
+
+    while (fgets(line, sizeof(line), file) != NULL) {
+        char *text;
+        char *comment;
+        ++line_number;
+        text = trim_config_text(line);
+        comment = strpbrk(text, "#;");
+        if (comment != NULL) {
+            *comment = '\0';
+            text = trim_config_text(text);
+        }
+        if (*text == '\0') continue;
+        if (*text == '[') {
+            char *end = strchr(text + 1, ']');
+            if (end == NULL) {
+                fclose(file);
+                free(*items);
+                *items = NULL;
+                *count = 0U;
+                snprintf(message, message_size,
+                         "Invalid section header at %s:%u", path, line_number);
+                return false;
+            }
+            *end = '\0';
+            in_section = strcmp(trim_config_text(text + 1), preset) == 0;
+            if (in_section) saw_section = true;
+            else if (saw_section && *count > 0U) break;
+            continue;
+        }
+        if (!in_section) continue;
+        {
+            char *first = text;
+            char *second;
+            char *third;
+            uint32_t frequency;
+            uint32_t symbol_rate;
+            char polarization;
+
+            second = strpbrk(first, ", \t");
+            if (second == NULL) goto invalid_line;
+            *second++ = '\0';
+            second = trim_config_text(second);
+            while (*second == ',' || isspace((unsigned char)*second)) ++second;
+            third = strpbrk(second, ", \t");
+            if (third == NULL) goto invalid_line;
+            *third++ = '\0';
+            third = trim_config_text(third);
+            while (*third == ',' || isspace((unsigned char)*third)) ++third;
+            {
+                char *end = strpbrk(third, ", \t");
+                if (end != NULL) *end = '\0';
+            }
+            if (!parse_u32(trim_config_text(first), &frequency) ||
+                !parse_polarization(trim_config_text(second), &polarization) ||
+                !parse_u32(trim_config_text(third), &symbol_rate) ||
+                !transponder_array_append(items, count, frequency,
+                                          polarization, symbol_rate)) {
+invalid_line:
+                fclose(file);
+                free(*items);
+                *items = NULL;
+                *count = 0U;
+                snprintf(message, message_size,
+                         "Invalid transponder at %s:%u; use frequency_mhz,pol,symbol_rate_ks",
+                         path, line_number);
+                return false;
+            }
+        }
+    }
+    fclose(file);
+    if (!saw_section) {
+        free(*items);
+        *items = NULL;
+        *count = 0U;
+        snprintf(message, message_size,
+                 "Section [%s] was not found in %s", preset, path);
+        return false;
+    }
+    if (*count == 0U) {
+        free(*items);
+        *items = NULL;
+        snprintf(message, message_size,
+                 "Section [%s] in %s contains no transponders", preset, path);
+        return false;
+    }
+    snprintf(message, message_size,
+             "Loaded %zu transponders from [%s]", *count, preset);
+    return true;
+}
+
+static bool duplicate_builtin_astra(satellite_transponder_t **items,
+                                    size_t *count)
+{
+    const size_t total = sizeof(astra_19e_transponders) /
+                         sizeof(astra_19e_transponders[0]);
+    *items = (satellite_transponder_t *)malloc(total * sizeof(**items));
+    if (*items == NULL) {
+        *count = 0U;
+        return false;
+    }
+    memcpy(*items, astra_19e_transponders, total * sizeof(**items));
+    *count = total;
+    return true;
+}
+
+static bool prepare_transponder_sweep(const options_t *opt,
+                                      satellite_transponder_t **items,
+                                      size_t *count,
+                                      char *label,
+                                      size_t label_size,
+                                      char *message,
+                                      size_t message_size)
+{
+    const char *preset = opt->satellite_preset != NULL &&
+                         *opt->satellite_preset != '\0'
+        ? opt->satellite_preset : "custom";
+    if (load_transponder_table_section(opt->transponder_table_path, preset,
+                                      items, count, message, message_size)) {
+        snprintf(label, label_size, "%s", preset);
+        return true;
+    }
+    if ((strcmp(preset, "astra-19.2e") == 0 ||
+         (opt->orbital_tenths == 192U && !opt->west)) &&
+        duplicate_builtin_astra(items, count)) {
+        snprintf(label, label_size, "%s", "Astra 19.2E");
+        snprintf(message, message_size,
+                 "Using the built-in Astra 19.2E table (%zu transponders)",
+                 *count);
+        return true;
+    }
+    return false;
+}
 
 static bool device_start_sweep_transponder(socket_t *control,
                                             const options_t *opt,
@@ -4603,7 +5028,7 @@ static bool device_start_sweep_transponder(socket_t *control,
         state->scan_sweep_index >= state->scan_sweep_total) {
         return false;
     }
-    tp = &astra_19e_transponders[state->scan_sweep_index];
+    tp = &state->scan_sweep_transponders[state->scan_sweep_index];
     tune_opt = *opt;
     tune_opt.frequency_mhz = tp->frequency_mhz;
     tune_opt.symbol_rate_ks = tp->symbol_rate_ks;
@@ -4638,13 +5063,15 @@ static bool device_start_sweep_transponder(socket_t *control,
             state->scan_state = 1U;
             state->scan_next_poll = monotonic_seconds() + 0.5;
             snprintf(state->last_message, sizeof(state->last_message),
-                     "Astra sweep %zu/%zu: %u MHz %c %u kSym/s",
+                     "%s sweep %zu/%zu: %u MHz %c %u kSym/s",
+                     state->scan_sweep_label,
                      state->scan_sweep_index + 1U,
                      state->scan_sweep_total,
                      (unsigned)tp->frequency_mhz,
                      tp->polarization,
                      (unsigned)tp->symbol_rate_ks);
-            printf("Astra sweep %zu/%zu: tuning %u MHz, %c, %u kSym/s.\n",
+            printf("%s sweep %zu/%zu: tuning %u MHz, %c, %u kSym/s.\n",
+                   state->scan_sweep_label,
                    state->scan_sweep_index + 1U,
                    state->scan_sweep_total,
                    (unsigned)tp->frequency_mhz,
@@ -4671,6 +5098,9 @@ static void device_scan_mark_stopped(device_update_state_t *state,
     state->scan_transponder_sweep = false;
     state->scan_sweep_index = 0U;
     state->scan_sweep_total = 0U;
+    free(state->scan_sweep_transponders);
+    state->scan_sweep_transponders = NULL;
+    state->scan_sweep_label[0] = '\0';
     free_channel_list(&state->scan_sweep_channels);
     snprintf(state->last_action, sizeof(state->last_action), "scan");
     snprintf(state->last_message, sizeof(state->last_message), "%s", message);
@@ -4707,25 +5137,48 @@ static bool device_start_scan(socket_t *control,
     }
 
     if (opt->device_scan_mode == DEVICE_SCAN_UI_FULL_MODE &&
-        opt->orbital_tenths == 192U && !opt->west) {
+        (opt->satellite_preset_explicit ||
+         (opt->orbital_tenths == 192U && !opt->west))) {
+        char preparation[256];
+        satellite_transponder_t *table = NULL;
+        size_t table_count = 0U;
+        char table_label[96];
+        table_label[0] = '\0';
+        preparation[0] = '\0';
+        if (!prepare_transponder_sweep(opt, &table, &table_count,
+                                      table_label, sizeof(table_label),
+                                      preparation, sizeof(preparation))) {
+            char failure[256];
+            snprintf(failure, sizeof(failure),
+                     "Full sweep unavailable for %s: %.170s",
+                     opt->satellite_preset != NULL ? opt->satellite_preset : "custom",
+                     preparation[0] != '\0' ? preparation :
+                     "no detailed frequency table is available");
+            device_scan_mark_stopped(state, failure);
+            return false;
+        }
         state->scan_transponder_sweep = true;
         state->scan_sweep_index = 0U;
-        state->scan_sweep_total =
-            sizeof(astra_19e_transponders) /
-            sizeof(astra_19e_transponders[0]);
+        state->scan_sweep_total = table_count;
+        state->scan_sweep_transponders = table;
+        snprintf(state->scan_sweep_label, sizeof(state->scan_sweep_label),
+                 "%s", table_label);
         free_channel_list(&state->scan_sweep_channels);
-        printf("Starting Astra 19.2E software transponder sweep (%zu frequencies).\n",
-               state->scan_sweep_total);
+        printf("Starting %s software transponder sweep (%zu frequencies). %s\n",
+               state->scan_sweep_label, state->scan_sweep_total, preparation);
         if (!device_start_sweep_transponder(control, opt, state)) {
             device_scan_mark_stopped(state,
-                                     "Could not start Astra transponder sweep");
+                                     "Could not start the first full-sweep transponder");
             return false;
         }
         return true;
     }
 
+    state->scan_mode = 0U;
     snprintf(state->last_message, sizeof(state->last_message),
-             "Starting receiver channel scan");
+             opt->device_scan_mode == DEVICE_SCAN_UI_FULL_MODE
+                 ? "Starting compatibility receiver scan (no explicit full-sweep preset)"
+                 : "Starting receiver channel scan");
     if (!device_send_scan_action(control, opt, DEVICE_SCAN_AUTOMATIC_ACTION)) {
         device_scan_mark_stopped(state, "Receiver rejected channel-scan start");
         return false;
@@ -5507,7 +5960,7 @@ static bool device_sweep_collect_current(socket_t *control,
                                          size_t *added)
 {
     const satellite_transponder_t *tp =
-        &astra_19e_transponders[state->scan_sweep_index];
+        &state->scan_sweep_transponders[state->scan_sweep_index];
     uint8_t *xml = NULL;
     size_t xml_length = 0U;
     char path[1200];
@@ -5543,8 +5996,9 @@ static bool device_sweep_collect_current(socket_t *control,
         if (attempt < DEVICE_CHANNEL_DOWNLOAD_ATTEMPTS) {
             const unsigned delay_ms = 500U * attempt;
             fprintf(stderr,
-                    "Astra sweep %zu/%zu: Device database not ready "
+                    "%s sweep %zu/%zu: Device database not ready "
                     "(attempt %u/%u); retrying in %u ms.\n",
+                    state->scan_sweep_label,
                     state->scan_sweep_index + 1U,
                     state->scan_sweep_total,
                     attempt, DEVICE_CHANNEL_DOWNLOAD_ATTEMPTS,
@@ -5675,20 +6129,24 @@ static bool device_finish_transponder_sweep(socket_t *control,
                                             device_update_state_t *state,
                                             tuning_state_t *tuning)
 {
+    char sweep_label[96];
     channel_list_t completed = state->scan_sweep_channels;
+    snprintf(sweep_label, sizeof(sweep_label), "%s",
+             state->scan_sweep_label[0] != '\0' ?
+             state->scan_sweep_label : "Full");
     state->scan_sweep_channels.items = NULL;
     state->scan_sweep_channels.count = 0U;
 
     if (completed.count == 0U) {
         free_channel_list(&completed);
         device_scan_mark_stopped(state,
-                                 "Astra transponder sweep found no channels");
+                                 "Full transponder sweep found no channels");
         return false;
     }
     if (!write_sweep_channel_list(opt->channels_path, &completed, channels)) {
         free_channel_list(&completed);
         device_scan_mark_stopped(state,
-                                 "Could not install Astra sweep channel list");
+                                 "Could not install full-sweep channel list");
         return false;
     }
 
@@ -5699,8 +6157,13 @@ static bool device_finish_transponder_sweep(socket_t *control,
     state->busy = false;
     state->scan_progress = 100U;
     state->last_channels_success_utc = (int64_t)time(NULL);
-    printf("Astra 19.2E sweep complete: %zu unique services installed.\n",
-           channels->count);
+    printf("%s sweep complete: %zu unique services installed.\n",
+           sweep_label, channels->count);
+    free(state->scan_sweep_transponders);
+    state->scan_sweep_transponders = NULL;
+    state->scan_sweep_total = 0U;
+    state->scan_sweep_index = 0U;
+    state->scan_sweep_label[0] = '\0';
 
     if (opt->device_scan_epg_after &&
         !device_refresh_epg(control, opt, channels, epg, state, true)) {
@@ -5710,8 +6173,9 @@ static bool device_finish_transponder_sweep(socket_t *control,
     state->last_scan_success_utc = (int64_t)time(NULL);
     snprintf(state->last_action, sizeof(state->last_action), "scan");
     snprintf(state->last_message, sizeof(state->last_message),
-             "Astra sweep complete: %zu services; %zu EPG channels updated",
-             channels->count, state->last_epg_updated_channels);
+             "%s sweep complete: %zu services; %zu EPG channels updated",
+             sweep_label, channels->count,
+             state->last_epg_updated_channels);
     state->next_channels_due = monotonic_seconds() +
         (double)opt->device_channels_refresh_minutes * 60.0;
     state->next_epg_due = monotonic_seconds() +
@@ -5747,7 +6211,7 @@ static bool device_scan_step(socket_t *control,
         (void)device_send_scan_action(control, opt, DEVICE_SCAN_STOP_ACTION);
         device_scan_mark_stopped(state,
             state->scan_transponder_sweep
-                ? "Astra transponder sweep timed out"
+                ? "Full transponder sweep timed out"
                 : "Receiver channel scan timed out");
         memset(tuning, 0, sizeof(*tuning));
         return false;
@@ -5760,11 +6224,11 @@ static bool device_scan_step(socket_t *control,
                      opt->verbose) ||
         response[0] != 0xF6 || response[1] != 0x02) {
         fprintf(stderr, "%s scan-status poll failed; reconnecting.\n",
-                state->scan_transponder_sweep ? "Astra sweep" : "Receiver");
+                state->scan_transponder_sweep ? "Full sweep" : "Receiver");
         if (!reconnect_control_session(control, opt)) {
             device_scan_mark_stopped(state,
                 state->scan_transponder_sweep
-                    ? "Astra sweep stopped: control reconnect failed"
+                    ? "Full sweep stopped: control reconnect failed"
                     : "Channel scan stopped: control reconnect failed");
             return false;
         }
@@ -5776,12 +6240,13 @@ static bool device_scan_step(socket_t *control,
     raw_progress = response[6] > 100U ? 100U : response[6];
     raw_tv_count = read_u16_be(&response[13]);
     raw_radio_count = read_u16_be(&response[15]);
-    state->scan_mode = response[12];
+    state->scan_mode = state->scan_transponder_sweep
+        ? DEVICE_SCAN_UI_FULL_MODE : response[12];
     state->scan_next_poll = now + DEVICE_SCAN_POLL_SECONDS;
 
     if (state->scan_transponder_sweep) {
         const satellite_transponder_t *tp =
-            &astra_19e_transponders[state->scan_sweep_index];
+            &state->scan_sweep_transponders[state->scan_sweep_index];
         unsigned accumulated_tv;
         unsigned accumulated_radio;
         const size_t numerator = state->scan_sweep_index * 100U + raw_progress;
@@ -5801,15 +6266,17 @@ static bool device_scan_step(socket_t *control,
 
         if (state->scan_state == 1U) {
             snprintf(state->last_message, sizeof(state->last_message),
-                     "Astra sweep %zu/%zu: %u MHz %c, TP %u%%; %u services merged",
+                     "%s sweep %zu/%zu: %u MHz %c, TP %u%%; %u services merged",
+                     state->scan_sweep_label,
                      state->scan_sweep_index + 1U,
                      state->scan_sweep_total,
                      (unsigned)tp->frequency_mhz,
                      tp->polarization,
                      raw_progress,
                      accumulated_tv + accumulated_radio);
-            printf("Astra sweep %zu/%zu: %u MHz %c %u kSym/s, "
+            printf("%s sweep %zu/%zu: %u MHz %c %u kSym/s, "
                    "TP %u%%, reported TV %u/radio %u, merged %u.\n",
+                   state->scan_sweep_label,
                    state->scan_sweep_index + 1U,
                    state->scan_sweep_total,
                    (unsigned)tp->frequency_mhz,
@@ -5824,7 +6291,7 @@ static bool device_scan_step(socket_t *control,
 
         if (state->scan_state != 0U) {
             device_scan_mark_stopped(state,
-                                     "Device reported an invalid Astra sweep state");
+                                     "Device reported an invalid full-sweep state");
             memset(tuning, 0, sizeof(*tuning));
             return false;
         }
@@ -5833,8 +6300,9 @@ static bool device_scan_step(socket_t *control,
             size_t added = 0U;
             bool collected;
 
-            printf("Astra sweep %zu/%zu: transponder scan complete; "
+            printf("%s sweep %zu/%zu: transponder scan complete; "
                    "waiting for Device database commit.\n",
+                   state->scan_sweep_label,
                    state->scan_sweep_index + 1U,
                    state->scan_sweep_total);
             SLEEP_MS(DEVICE_SCAN_TP_COMMIT_WAIT_MS);
@@ -5847,8 +6315,9 @@ static bool device_scan_step(socket_t *control,
                         device_sweep_collect_current(control, opt, state, &added);
             if (!collected) {
                 fprintf(stderr,
-                        "Warning: Astra sweep %zu/%zu could not download the "
+                        "Warning: %s sweep %zu/%zu could not download the "
                         "current transponder result; continuing.\n",
+                        state->scan_sweep_label,
                         state->scan_sweep_index + 1U,
                         state->scan_sweep_total);
             } else {
@@ -5856,8 +6325,9 @@ static bool device_scan_step(socket_t *control,
                                           &accumulated_tv, &accumulated_radio);
                 state->scan_tv_count = accumulated_tv;
                 state->scan_radio_count = accumulated_radio;
-                printf("Astra sweep %zu/%zu: added %zu service%s; "
+                printf("%s sweep %zu/%zu: added %zu service%s; "
                        "%zu unique services merged.\n",
+                       state->scan_sweep_label,
                        state->scan_sweep_index + 1U,
                        state->scan_sweep_total,
                        added, added == 1U ? "" : "s",
@@ -5871,7 +6341,7 @@ static bool device_scan_step(socket_t *control,
                 ((state->scan_sweep_index * 100U) / state->scan_sweep_total);
             if (!device_start_sweep_transponder(control, opt, state)) {
                 device_scan_mark_stopped(state,
-                                         "Could not start the next Astra transponder");
+                                         "Could not start the next full-sweep transponder");
                 memset(tuning, 0, sizeof(*tuning));
                 return false;
             }
@@ -5962,6 +6432,7 @@ static bool device_scan_step(socket_t *control,
 
 static void device_update_state_free(device_update_state_t *state)
 {
+    free(state->scan_sweep_transponders);
     free_channel_list(&state->scan_sweep_channels);
     memset(state, 0, sizeof(*state));
 }
@@ -6668,14 +7139,205 @@ static bool http_viewer_authorized(const char *request, const options_t *opt)
                                        opt->http_password);
 }
 
-static bool http_admin_authorized(const char *request, const options_t *opt)
+static bool admin_credentials_enabled(const options_t *opt)
 {
-    if (opt->admin_user != NULL) {
-        return http_authorized_credentials(request,
-                                           opt->admin_user,
-                                           opt->admin_password);
+    return opt->admin_user != NULL || opt->http_user != NULL;
+}
+
+static const char *admin_login_user(const options_t *opt)
+{
+    return opt->admin_user != NULL ? opt->admin_user : opt->http_user;
+}
+
+static const char *admin_login_password(const options_t *opt)
+{
+    return opt->admin_user != NULL ? opt->admin_password : opt->http_password;
+}
+
+static bool http_get_cookie(const char *request,
+                            const char *name,
+                            char *value,
+                            size_t value_capacity)
+{
+    char cookies[4096];
+    const size_t name_length = strlen(name);
+    char *item;
+
+    if (!http_get_header(request, "Cookie", cookies, sizeof(cookies))) {
+        return false;
     }
-    return http_viewer_authorized(request, opt);
+    item = cookies;
+    while (*item != '\0') {
+        char *end = strchr(item, ';');
+        char *equals;
+        char *start;
+        char *finish;
+        if (end == NULL) {
+            end = item + strlen(item);
+        }
+        start = item;
+        while (start < end && isspace((unsigned char)*start)) {
+            ++start;
+        }
+        equals = memchr(start, '=', (size_t)(end - start));
+        if (equals != NULL && (size_t)(equals - start) == name_length &&
+            memcmp(start, name, name_length) == 0) {
+            start = equals + 1;
+            finish = end;
+            while (finish > start && isspace((unsigned char)finish[-1])) {
+                --finish;
+            }
+            if ((size_t)(finish - start) + 1U > value_capacity) {
+                return false;
+            }
+            memcpy(value, start, (size_t)(finish - start));
+            value[finish - start] = '\0';
+            return true;
+        }
+        if (*end == '\0') {
+            break;
+        }
+        item = end + 1;
+    }
+    return false;
+}
+
+static bool secure_random_bytes(uint8_t *output, size_t length)
+{
+#ifdef _WIN32
+    typedef BOOLEAN (APIENTRY *rtl_gen_random_fn)(PVOID, ULONG);
+    HMODULE module = LoadLibraryA("advapi32.dll");
+    rtl_gen_random_fn generator = NULL;
+    bool ok = false;
+    if (module != NULL) {
+        generator = (rtl_gen_random_fn)(void *)GetProcAddress(
+            module, "SystemFunction036");
+        if (generator != NULL && length <= (size_t)ULONG_MAX) {
+            ok = generator(output, (ULONG)length) != FALSE;
+        }
+        FreeLibrary(module);
+    }
+    return ok;
+#else
+    int fd = open("/dev/urandom", O_RDONLY);
+    size_t used = 0U;
+    if (fd < 0) {
+        return false;
+    }
+    while (used < length) {
+        const ssize_t amount = read(fd, output + used, length - used);
+        if (amount < 0 && errno == EINTR) {
+            continue;
+        }
+        if (amount <= 0) {
+            close(fd);
+            return false;
+        }
+        used += (size_t)amount;
+    }
+    close(fd);
+    return true;
+#endif
+}
+
+static bool make_admin_session_token(char token[ADMIN_SESSION_TOKEN_HEX + 1U])
+{
+    static const char hexadecimal[] = "0123456789abcdef";
+    uint8_t random_bytes[ADMIN_SESSION_TOKEN_BYTES];
+    size_t i;
+    if (!secure_random_bytes(random_bytes, sizeof(random_bytes))) {
+        return false;
+    }
+    for (i = 0; i < sizeof(random_bytes); ++i) {
+        token[i * 2U] = hexadecimal[random_bytes[i] >> 4];
+        token[i * 2U + 1U] = hexadecimal[random_bytes[i] & 0x0FU];
+    }
+    token[ADMIN_SESSION_TOKEN_HEX] = '\0';
+    return true;
+}
+
+static void admin_sessions_prune(admin_session_store_t *store, double now)
+{
+    size_t i;
+    for (i = 0; i < ADMIN_SESSION_LIMIT; ++i) {
+        if (store->items[i].active && store->items[i].expires_at <= now) {
+            memset(&store->items[i], 0, sizeof(store->items[i]));
+        }
+    }
+}
+
+static bool admin_session_authorized(const char *request,
+                                     const options_t *opt,
+                                     admin_session_store_t *store)
+{
+    char supplied[ADMIN_SESSION_TOKEN_HEX + 1U];
+    const double now = monotonic_seconds();
+    size_t i;
+
+    if (!admin_credentials_enabled(opt)) {
+        return true;
+    }
+    admin_sessions_prune(store, now);
+    if (!http_get_cookie(request, "soralink_admin", supplied,
+                         sizeof(supplied))) {
+        return false;
+    }
+    for (i = 0; i < ADMIN_SESSION_LIMIT; ++i) {
+        admin_session_t *session = &store->items[i];
+        if (session->active && constant_time_equal(session->token, supplied)) {
+            session->expires_at = now + (double)ADMIN_SESSION_LIFETIME_SECONDS;
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool admin_session_create(admin_session_store_t *store,
+                                 char token[ADMIN_SESSION_TOKEN_HEX + 1U])
+{
+    const double now = monotonic_seconds();
+    size_t i;
+    size_t slot = 0U;
+    double earliest = 0.0;
+
+    admin_sessions_prune(store, now);
+    for (i = 0; i < ADMIN_SESSION_LIMIT; ++i) {
+        if (!store->items[i].active) {
+            slot = i;
+            break;
+        }
+        if (i == 0U || store->items[i].expires_at < earliest) {
+            earliest = store->items[i].expires_at;
+            slot = i;
+        }
+    }
+    if (!make_admin_session_token(token)) {
+        return false;
+    }
+    store->items[slot].active = true;
+    snprintf(store->items[slot].token, sizeof(store->items[slot].token),
+             "%s", token);
+    store->items[slot].expires_at =
+        now + (double)ADMIN_SESSION_LIFETIME_SECONDS;
+    return true;
+}
+
+static void admin_session_invalidate(const char *request,
+                                     admin_session_store_t *store)
+{
+    char supplied[ADMIN_SESSION_TOKEN_HEX + 1U];
+    size_t i;
+    if (!http_get_cookie(request, "soralink_admin", supplied,
+                         sizeof(supplied))) {
+        return;
+    }
+    for (i = 0; i < ADMIN_SESSION_LIMIT; ++i) {
+        if (store->items[i].active &&
+            constant_time_equal(store->items[i].token, supplied)) {
+            memset(&store->items[i], 0, sizeof(store->items[i]));
+            return;
+        }
+    }
 }
 
 static void send_http_response(http_connection_t *connection,
@@ -6994,6 +7656,124 @@ static bool admin_post_origin_allowed(const char *request,
     return strcmp(origin, expected) == 0;
 }
 
+static void send_admin_auth_state(http_connection_t *connection,
+                                  const char *request,
+                                  const options_t *opt,
+                                  admin_session_store_t *sessions,
+                                  bool head_only)
+{
+    char body[160];
+    const bool required = admin_credentials_enabled(opt);
+    const bool authenticated = admin_session_authorized(request, opt, sessions);
+    snprintf(body, sizeof(body),
+             "{\"required\":%s,\"authenticated\":%s,\"mode\":\"session\"}",
+             required ? "true" : "false",
+             authenticated ? "true" : "false");
+    send_http_response(connection, 200, "OK", "application/json; charset=utf-8",
+                       NULL, body, head_only);
+}
+
+static void send_admin_unauthorized(http_connection_t *connection,
+                                    bool head_only)
+{
+    send_http_response(
+        connection, 401, "Unauthorized", "application/json; charset=utf-8",
+        "X-SORALink-Auth: session\r\n",
+        "{\"error\":\"authentication_required\",\"message\":\"Administrator login required.\"}",
+        head_only);
+}
+
+static void handle_admin_login(http_connection_t *connection,
+                               const char *request,
+                               const options_t *opt,
+                               admin_session_store_t *sessions,
+                               const tls_server_t *tls)
+{
+    const char *body = http_request_body(request);
+    char username[256];
+    char password[256];
+    char token[ADMIN_SESSION_TOKEN_HEX + 1U];
+    char headers[512];
+    const double now = monotonic_seconds();
+
+    if (body == NULL || !admin_post_origin_allowed(request, opt, tls)) {
+        send_http_error(connection, 400, "Bad Request",
+                        "Invalid administration login request.\n", false);
+        return;
+    }
+    if (!admin_credentials_enabled(opt)) {
+        send_http_response(connection, 200, "OK",
+                           "application/json; charset=utf-8", NULL,
+                           "{\"ok\":true,\"authentication_required\":false}",
+                           false);
+        return;
+    }
+    if (sessions->blocked_until > now) {
+        char retry_headers[128];
+        const unsigned retry = (unsigned)(sessions->blocked_until - now) + 1U;
+        snprintf(retry_headers, sizeof(retry_headers),
+                 "Retry-After: %u\r\n", retry);
+        send_http_response(
+            connection, 429, "Too Many Requests",
+            "application/json; charset=utf-8", retry_headers,
+            "{\"error\":\"login_throttled\",\"message\":\"Too many failed attempts. Please wait and try again.\"}",
+            false);
+        return;
+    }
+    if (!form_get_value(body, "username", username, sizeof(username)) ||
+        !form_get_value(body, "password", password, sizeof(password)) ||
+        !constant_time_equal(username, admin_login_user(opt)) ||
+        !constant_time_equal(password, admin_login_password(opt))) {
+        ++sessions->failed_attempts;
+        if (sessions->failed_attempts >= ADMIN_LOGIN_FAILURE_LIMIT) {
+            sessions->failed_attempts = 0U;
+            sessions->blocked_until = now + (double)ADMIN_LOGIN_LOCK_SECONDS;
+        }
+        send_http_response(
+            connection, 401, "Unauthorized",
+            "application/json; charset=utf-8", NULL,
+            "{\"error\":\"invalid_credentials\",\"message\":\"Incorrect username or password.\"}",
+            false);
+        return;
+    }
+    sessions->failed_attempts = 0U;
+    sessions->blocked_until = 0.0;
+    if (!admin_session_create(sessions, token)) {
+        send_http_error(connection, 500, "Internal Server Error",
+                        "A secure administrator session could not be created.\n",
+                        false);
+        return;
+    }
+    snprintf(headers, sizeof(headers),
+             "Set-Cookie: soralink_admin=%s; Path=/admin; HttpOnly; SameSite=Strict; Max-Age=%u%s\r\n",
+             token, (unsigned)ADMIN_SESSION_LIFETIME_SECONDS,
+             tls->enabled ? "; Secure" : "");
+    send_http_response(connection, 200, "OK",
+                       "application/json; charset=utf-8", headers,
+                       "{\"ok\":true,\"authenticated\":true}", false);
+}
+
+static void handle_admin_logout(http_connection_t *connection,
+                                const char *request,
+                                const options_t *opt,
+                                admin_session_store_t *sessions,
+                                const tls_server_t *tls)
+{
+    char headers[256];
+    if (!admin_post_origin_allowed(request, opt, tls)) {
+        send_http_error(connection, 400, "Bad Request",
+                        "Invalid administration logout request.\n", false);
+        return;
+    }
+    admin_session_invalidate(request, sessions);
+    snprintf(headers, sizeof(headers),
+             "Set-Cookie: soralink_admin=; Path=/admin; HttpOnly; SameSite=Strict; Max-Age=0%s\r\n",
+             tls->enabled ? "; Secure" : "");
+    send_http_response(connection, 200, "OK",
+                       "application/json; charset=utf-8", headers,
+                       "{\"ok\":true,\"authenticated\":false}", false);
+}
+
 static void send_http_redirect(http_connection_t *connection,
                                const char *location)
 {
@@ -7023,6 +7803,8 @@ static bool live_config_key(const char *key)
            strcmp(key, "device_scan_network") == 0 ||
            strcmp(key, "device_scan_epg_after") == 0 ||
            strcmp(key, "device_scan_apply_satellite") == 0 ||
+           strcmp(key, "satellite_preset") == 0 ||
+           strcmp(key, "transponder_table") == 0 ||
            strcmp(key, "orbital") == 0 ||
            strcmp(key, "west") == 0 ||
            strcmp(key, "tone") == 0 ||
@@ -7056,6 +7838,8 @@ static bool update_live_config_file(const options_t *opt)
     bool wrote_device_scan_network = false;
     bool wrote_device_scan_epg = false;
     bool wrote_device_scan_apply_satellite = false;
+    bool wrote_satellite_preset = false;
+    bool wrote_transponder_table = false;
     bool wrote_orbital = false;
     bool wrote_west = false;
     bool wrote_tone = false;
@@ -7161,6 +7945,14 @@ static bool update_live_config_file(const options_t *opt)
                     fprintf(output, "device_scan_apply_satellite=%s\n",
                             opt->device_scan_apply_satellite ? "true" : "false");
                     wrote_device_scan_apply_satellite = true;
+                } else if (strcmp(key, "satellite_preset") == 0) {
+                    fprintf(output, "satellite_preset=%s\n",
+                            opt->satellite_preset != NULL ? opt->satellite_preset : "custom");
+                    wrote_satellite_preset = true;
+                } else if (strcmp(key, "transponder_table") == 0) {
+                    fprintf(output, "transponder_table=%s\n",
+                            opt->transponder_table_path != NULL ? opt->transponder_table_path : "");
+                    wrote_transponder_table = true;
                 } else if (strcmp(key, "orbital") == 0) {
                     fprintf(output, "orbital=%u\n",
                             (unsigned)opt->orbital_tenths);
@@ -7248,6 +8040,12 @@ static bool update_live_config_file(const options_t *opt)
     if (!wrote_device_scan_apply_satellite)
         fprintf(output, "device_scan_apply_satellite=%s\n",
                 opt->device_scan_apply_satellite ? "true" : "false");
+    if (!wrote_satellite_preset)
+        fprintf(output, "satellite_preset=%s\n",
+                opt->satellite_preset != NULL ? opt->satellite_preset : "custom");
+    if (!wrote_transponder_table)
+        fprintf(output, "transponder_table=%s\n",
+                opt->transponder_table_path != NULL ? opt->transponder_table_path : "");
     if (!wrote_orbital)
         fprintf(output, "orbital=%u\n", (unsigned)opt->orbital_tenths);
     if (!wrote_west)
@@ -7883,6 +8681,12 @@ static void serve_admin_api_status(http_connection_t *connection,
             opt->epg_update_timeout_ms) ||
         !string_buffer_append_json_string(&body,
             opt->epg_url != NULL ? opt->epg_url : "") ||
+        !string_buffer_append(&body, ",\"satellite_preset\":") ||
+        !string_buffer_append_json_string(&body,
+            opt->satellite_preset != NULL ? opt->satellite_preset : "custom") ||
+        !string_buffer_append(&body, ",\"transponder_table_path\":") ||
+        !string_buffer_append_json_string(&body,
+            opt->transponder_table_path != NULL ? opt->transponder_table_path : "") ||
         !string_buffer_appendf(&body,
             ",\"device_update_on_start\":%s,"
             "\"device_scan_network\":%s,"
@@ -8358,6 +9162,7 @@ static void handle_admin_post(http_connection_t *connection,
         char device_scan_network_text[8];
         char device_scan_epg_text[8];
         char device_scan_apply_satellite_text[8];
+        char satellite_preset_text[128];
         char orbital_text[32];
         char west_text[8];
         char tone_text[16];
@@ -8381,7 +9186,6 @@ static void handle_admin_post(http_connection_t *connection,
         uint32_t lnb_high;
         uint32_t lnb_switch;
         uint32_t diseqc;
-        const size_t active = http_stream_client_count(stream);
         const bool persist = form_get_value(body, "persist", persist_text,
                                              sizeof(persist_text)) &&
                              strcmp(persist_text, "1") == 0;
@@ -8404,25 +9208,50 @@ static void handle_admin_post(http_connection_t *connection,
             !form_get_value(body, "device_scan_network", device_scan_network_text, sizeof(device_scan_network_text)) ||
             !form_get_value(body, "device_scan_epg_after", device_scan_epg_text, sizeof(device_scan_epg_text)) ||
             !form_get_value(body, "device_scan_apply_satellite", device_scan_apply_satellite_text, sizeof(device_scan_apply_satellite_text)) ||
+            !form_get_value(body, "satellite_preset", satellite_preset_text, sizeof(satellite_preset_text)) ||
             !form_get_value(body, "orbital_tenths", orbital_text, sizeof(orbital_text)) ||
             !form_get_value(body, "west", west_text, sizeof(west_text)) ||
             !form_get_value(body, "tone", tone_text, sizeof(tone_text)) ||
             !form_get_value(body, "lnb_low_mhz", lnb_low_text, sizeof(lnb_low_text)) ||
             !form_get_value(body, "lnb_high_mhz", lnb_high_text, sizeof(lnb_high_text)) ||
             !form_get_value(body, "lnb_switch_mhz", lnb_switch_text, sizeof(lnb_switch_text)) ||
-            !form_get_value(body, "diseqc_port", diseqc_text, sizeof(diseqc_text)) ||
-            !parse_u32(max_text, &max_clients) || max_clients == 0U ||
-            max_clients > HTTP_CLIENT_LIMIT || max_clients < active ||
-            !parse_u32(wait_text, &wait_ms) || wait_ms > 60000U ||
+            !form_get_value(body, "diseqc_port", diseqc_text, sizeof(diseqc_text))) {
+            send_http_error(connection, 400, "Bad Request",
+                            "The settings form is incomplete. Reload Mission Control and try again.\n",
+                            false);
+            return;
+        }
+
+        if (!parse_u32(max_text, &max_clients) || max_clients == 0U ||
+            max_clients > HTTP_CLIENT_LIMIT) {
+            send_http_error(connection, 400, "Bad Request",
+                            "Maximum simultaneous clients must be between 1 and 64. Existing viewers are not disconnected when the limit is lowered.\n",
+                            false);
+            return;
+        }
+
+        if (!parse_u32(wait_text, &wait_ms) || wait_ms > 60000U ||
             !parse_u32(timeout_text, &timeout_ms) || timeout_ms < 100U ||
-            timeout_ms > 60000U ||
-            !parse_u32(device_channels_minutes_text, &device_channels_minutes) ||
+            timeout_ms > 60000U) {
+            send_http_error(connection, 400, "Bad Request",
+                            "Tuning wait must be 0-60000 ms and network timeout must be 100-60000 ms.\n",
+                            false);
+            return;
+        }
+
+        if (!parse_u32(device_channels_minutes_text, &device_channels_minutes) ||
             device_channels_minutes > 10080U ||
             !parse_u32(device_epg_minutes_text, &device_epg_minutes) ||
             device_epg_minutes > 10080U ||
             !parse_u32(device_scan_minutes_text, &device_scan_minutes) ||
-            device_scan_minutes > 10080U ||
-            !parse_u32(device_scan_timeout_text, &device_scan_timeout) ||
+            device_scan_minutes > 10080U) {
+            send_http_error(connection, 400, "Bad Request",
+                            "Receiver refresh intervals must be between 0 and 10080 minutes.\n",
+                            false);
+            return;
+        }
+
+        if (!parse_u32(device_scan_timeout_text, &device_scan_timeout) ||
             device_scan_timeout < 1U || device_scan_timeout > 120U ||
             !parse_u32(device_scan_range_text, &device_scan_range) ||
             device_scan_range > 7U ||
@@ -8431,24 +9260,39 @@ static void handle_admin_post(http_connection_t *connection,
             !parse_u32(device_scan_sort_text, &device_scan_sort) ||
             device_scan_sort > 3U ||
             !parse_u32(device_scan_mode_text, &device_scan_mode) ||
-            !normalize_device_scan_mode(&device_scan_mode) ||
-            !parse_u32(orbital_text, &orbital) || orbital > 32767U ||
+            !normalize_device_scan_mode(&device_scan_mode)) {
+            send_http_error(connection, 400, "Bad Request",
+                            "One or more receiver scan values are outside the supported range.\n",
+                            false);
+            return;
+        }
+
+        if (!parse_u32(orbital_text, &orbital) || orbital > 32767U ||
             !parse_u32(lnb_low_text, &lnb_low) || lnb_low > 65535U ||
             !parse_u32(lnb_high_text, &lnb_high) || lnb_high > 65535U ||
             !parse_u32(lnb_switch_text, &lnb_switch) || lnb_switch > 65535U ||
             !parse_u32(diseqc_text, &diseqc) || diseqc > 255U ||
-            (strcmp(device_scan_network_text, "0") != 0 && strcmp(device_scan_network_text, "1") != 0) ||
+            satellite_preset_text[0] == '\0' ||
+            strspn(satellite_preset_text,
+                   "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.") !=
+                strlen(satellite_preset_text) ||
+            (strcmp(west_text, "0") != 0 && strcmp(west_text, "1") != 0) ||
+            (strcmp(tone_text, "auto") != 0 && strcmp(tone_text, "on") != 0 && strcmp(tone_text, "off") != 0)) {
+            send_http_error(connection, 400, "Bad Request",
+                            "One or more satellite or LNB values are invalid.\n",
+                            false);
+            return;
+        }
+
+        if ((strcmp(device_scan_network_text, "0") != 0 && strcmp(device_scan_network_text, "1") != 0) ||
             (strcmp(device_scan_epg_text, "0") != 0 && strcmp(device_scan_epg_text, "1") != 0) ||
             (strcmp(device_scan_apply_satellite_text, "0") != 0 && strcmp(device_scan_apply_satellite_text, "1") != 0) ||
-            (strcmp(west_text, "0") != 0 && strcmp(west_text, "1") != 0) ||
-            (strcmp(tone_text, "auto") != 0 && strcmp(tone_text, "on") != 0 && strcmp(tone_text, "off") != 0) ||
             (strcmp(device_channels_text, "0") != 0 && strcmp(device_channels_text, "1") != 0) ||
             (strcmp(device_epg_text, "0") != 0 && strcmp(device_epg_text, "1") != 0) ||
             (strcmp(device_start_text, "0") != 0 && strcmp(device_start_text, "1") != 0) ||
-            (strcmp(missing_text, "pass") != 0 &&
-             strcmp(missing_text, "drop") != 0)) {
+            (strcmp(missing_text, "pass") != 0 && strcmp(missing_text, "drop") != 0)) {
             send_http_error(connection, 400, "Bad Request",
-                            "One or more live settings are invalid. The client limit cannot be below the number of connected viewers.\n",
+                            "One or more settings selectors contain an unsupported value.\n",
                             false);
             return;
         }
@@ -8480,6 +9324,11 @@ static void handle_admin_post(http_connection_t *connection,
         opt->device_scan_epg_after = strcmp(device_scan_epg_text, "1") == 0;
         opt->device_scan_apply_satellite =
             strcmp(device_scan_apply_satellite_text, "1") == 0;
+        snprintf(opt->text.satellite_preset,
+                 sizeof(opt->text.satellite_preset), "%s",
+                 satellite_preset_text);
+        opt->satellite_preset = opt->text.satellite_preset;
+        opt->satellite_preset_explicit = true;
         opt->orbital_tenths = orbital;
         opt->west = strcmp(west_text, "1") == 0;
         opt->tone = strcmp(tone_text, "on") == 0 ? TONE_ON :
@@ -8523,6 +9372,7 @@ static int run_http_server(socket_t *control, options_t *opt)
     tls_server_t tls;
     http_stream_t stream;
     device_update_state_t updates;
+    admin_session_store_t admin_sessions;
     double last_heartbeat = monotonic_seconds();
     uint64_t next_connection_id = 1U;
     int result = EXIT_SUCCESS;
@@ -8532,6 +9382,7 @@ static int run_http_server(socket_t *control, options_t *opt)
     memset(&epg, 0, sizeof(epg));
     memset(&stream, 0, sizeof(stream));
     memset(&updates, 0, sizeof(updates));
+    memset(&admin_sessions, 0, sizeof(admin_sessions));
     snprintf(updates.last_message, sizeof(updates.last_message), "No device update has run yet");
     stream.dongle_udp = SOCKET_INVALID;
     stream.max_clients = (size_t)opt->max_http_clients;
@@ -8543,6 +9394,10 @@ static int run_http_server(socket_t *control, options_t *opt)
     stream_keys_init(&stream.keys, opt);
 
     memset(&channels, 0, sizeof(channels));
+    if (!ensure_default_channel_list(opt->channels_path)) {
+        device_update_state_free(&updates);
+        return EXIT_FAILURE;
+    }
     if (!load_channel_list(opt->channels_path, &channels)) {
         if (!(opt->device_channels_update && opt->device_update_on_start) ||
             !device_refresh_channels(control, opt, &channels, &updates)) {
@@ -8658,9 +9513,9 @@ static int run_http_server(socket_t *control, options_t *opt)
         printf("Viewer HTTP Basic authentication is enabled.\n");
     }
     if (opt->admin_user != NULL) {
-        printf("Dedicated administrator credentials are enabled.\n");
+        printf("Administrator popup login and session cookies are enabled.\n");
     } else if (opt->web_ui && opt->http_user != NULL) {
-        printf("The Web UI uses the viewer HTTP credentials.\n");
+        printf("The Web UI popup login uses the viewer HTTP credentials.\n");
     }
     if (opt->config_path != NULL) {
         printf("Configuration loaded from %s; command-line values took precedence.\n",
@@ -8780,22 +9635,31 @@ static int run_http_server(socket_t *control, options_t *opt)
                     head_only = request_line.method == HTTP_METHOD_HEAD;
 
                     if (admin_path) {
+                        const bool page_request =
+                            strcmp(request_line.path, "/admin") == 0 ||
+                            strcmp(request_line.path, "/admin/") == 0;
+                        const bool asset_request =
+                            strncmp(request_line.path, "/admin/assets/", 14) == 0;
+                        const bool auth_state_request =
+                            strcmp(request_line.path, "/admin/api/auth") == 0;
+                        const bool login_request =
+                            strcmp(request_line.path, "/admin/login") == 0;
+                        const bool logout_request =
+                            strcmp(request_line.path, "/admin/logout") == 0;
+                        const bool authorized = admin_session_authorized(
+                            request, opt, &admin_sessions);
+
                         if (!opt->web_ui) {
                             send_http_error(&connection, 404, "Not Found",
                                             "The administration Web UI is disabled.\n",
                                             head_only);
-                        } else if (!http_admin_authorized(request, opt)) {
-                            send_http_unauthorized(&connection,
-                                                   "SORALink Administration",
-                                                   head_only);
                         } else if (request_line.method == HTTP_METHOD_OPTIONS) {
                             send_http_response(
                                 &connection, 204, "No Content", "text/plain",
                                 "Allow: GET, HEAD, POST, OPTIONS\r\n", "", true);
                         } else if (request_line.method == HTTP_METHOD_GET ||
                                    request_line.method == HTTP_METHOD_HEAD) {
-                            if (strcmp(request_line.path, "/admin") == 0 ||
-                                strcmp(request_line.path, "/admin/") == 0) {
+                            if (page_request) {
                                 serve_admin_page(&connection, &stream, &channels,
                                                  opt, &tls, head_only);
                             } else if (strcmp(request_line.path,
@@ -8828,6 +9692,11 @@ static int run_http_server(socket_t *control, options_t *opt)
                                 serve_web_asset(&connection, opt,
                                                 "soralink-satellite.png",
                                                 "image/png", head_only, true);
+                            } else if (auth_state_request) {
+                                send_admin_auth_state(&connection, request, opt,
+                                                      &admin_sessions, head_only);
+                            } else if (!authorized) {
+                                send_admin_unauthorized(&connection, head_only);
                             } else if (strcmp(request_line.path,
                                               "/admin/api/status") == 0) {
                                 serve_admin_api_status(&connection, &stream,
@@ -8845,16 +9714,30 @@ static int run_http_server(socket_t *control, options_t *opt)
                                     serve_admin_epg_api(&connection, &channels,
                                                         &epg, lcn, head_only);
                                 }
+                            } else if (asset_request) {
+                                send_http_error(&connection, 404, "Not Found",
+                                                "Unknown administration asset.\n",
+                                                head_only);
                             } else {
                                 send_http_error(&connection, 404, "Not Found",
                                                 "Unknown administration resource.\n",
                                                 head_only);
                             }
                         } else if (request_line.method == HTTP_METHOD_POST) {
-                            handle_admin_post(&connection, request_line.path,
-                                              request, &stream, &channels,
-                                              &epg, opt, control, &tuning,
-                                              &updates, &tls);
+                            if (login_request) {
+                                handle_admin_login(&connection, request, opt,
+                                                   &admin_sessions, &tls);
+                            } else if (logout_request) {
+                                handle_admin_logout(&connection, request, opt,
+                                                    &admin_sessions, &tls);
+                            } else if (!authorized) {
+                                send_admin_unauthorized(&connection, false);
+                            } else {
+                                handle_admin_post(&connection, request_line.path,
+                                                  request, &stream, &channels,
+                                                  &epg, opt, control, &tuning,
+                                                  &updates, &tls);
+                            }
                         } else {
                             send_http_response(
                                 &connection, 405, "Method Not Allowed",
@@ -9050,6 +9933,10 @@ static bool run_self_tests(void)
     char epg_text[256];
     download_url_t parsed_url;
     options_t tone_test_opt;
+    options_t auth_test_opt;
+    admin_session_store_t auth_test_sessions;
+    char auth_test_token[ADMIN_SESSION_TOKEN_HEX + 1U];
+    char auth_test_request[512];
     uint8_t tone_frame[FRAME_SIZE];
     uint8_t *decoded_chunked = NULL;
     size_t decoded_chunked_length = 0U;
@@ -9123,6 +10010,48 @@ static bool run_self_tests(void)
         strstr(channel.name, "News & Sport") != NULL && channel.fta,
         "Multiline channel XML, EPG ID, and named/numeric entities");
 
+    {
+        char web_root[] =
+            "<?xml version='1.0'?><channels><ch lcn='1'/></channels>";
+        char native_root[] =
+            "\xEF\xBB\xBF<?xml version='1.0'?><ch_List><ch lcn='1'/></ch_List>";
+        char invalid_root[] = "<channel_list><ch lcn='1'/></channel_list>";
+        TEST_CHECK(channel_xml_has_valid_root(web_root) &&
+                   channel_xml_has_valid_root(native_root) &&
+                   !channel_xml_has_valid_root(invalid_root),
+                   "Channel XML accepts Web UI and native Device root elements");
+    }
+
+    {
+        const char *empty_path = "soralink-selftest-channels-empty.tmp";
+        const char *bad_path = "soralink-selftest-channels-bad.tmp";
+        channel_list_t empty_channels;
+        channel_list_t bad_channels;
+        FILE *bad_file;
+        bool bad_written = false;
+
+        remove(empty_path);
+        memset(&empty_channels, 0, sizeof(empty_channels));
+        TEST_CHECK(ensure_default_channel_list(empty_path) &&
+                   load_channel_list(empty_path, &empty_channels) &&
+                   empty_channels.count == 0U,
+                   "Missing channels.xml is created as a valid empty list");
+        free_channel_list(&empty_channels);
+        remove(empty_path);
+
+        bad_file = fopen(bad_path, "wb");
+        if (bad_file != NULL) {
+            bad_written = fputs("this is not channel XML\n", bad_file) != EOF &&
+                          fclose(bad_file) == 0;
+        }
+        memset(&bad_channels, 0, sizeof(bad_channels));
+        TEST_CHECK(bad_written && ensure_default_channel_list(bad_path) &&
+                   !load_channel_list(bad_path, &bad_channels),
+                   "Existing malformed channel files are never overwritten");
+        free_channel_list(&bad_channels);
+        remove(bad_path);
+    }
+
     TEST_CHECK(parse_xmltv_time("19700101010000 +0100", &parsed_time) &&
                parsed_time == 0,
                "XMLTV timestamp and UTC offset parsing");
@@ -9152,6 +10081,24 @@ static bool run_self_tests(void)
                              encoded, sizeof(encoded)) > 0U &&
                strcmp(encoded, "dXNlcjpwYXNz") == 0,
                "HTTP Basic-auth Base64 encoding");
+
+    memset(&auth_test_opt, 0, sizeof(auth_test_opt));
+    memset(&auth_test_sessions, 0, sizeof(auth_test_sessions));
+    auth_test_opt.admin_user = "admin";
+    auth_test_opt.admin_password = "secret";
+    TEST_CHECK(!admin_session_authorized(
+                   "GET /admin/api/status HTTP/1.1\r\n\r\n",
+                   &auth_test_opt, &auth_test_sessions),
+               "Administrator API rejects requests without a session cookie");
+    auth_test_request[0] = '\0';
+    TEST_CHECK(admin_session_create(&auth_test_sessions, auth_test_token) &&
+               snprintf(auth_test_request, sizeof(auth_test_request),
+                        "GET /admin/api/status HTTP/1.1\r\n"
+                        "Cookie: soralink_admin=%s\r\n\r\n",
+                        auth_test_token) > 0 &&
+               admin_session_authorized(auth_test_request, &auth_test_opt,
+                                        &auth_test_sessions),
+               "Administrator popup login session cookie authorizes the API");
 
     TEST_CHECK(parse_download_url(
                    "https://example.test:8443/guide.xml?region=eu",
@@ -9197,13 +10144,39 @@ static bool run_self_tests(void)
     TEST_CHECK(frame[20] == 0x02 && frame[11] == 17,
                "Device scan-status request asks for 17 data bytes");
     TEST_CHECK(sizeof(astra_19e_transponders) /
-               sizeof(astra_19e_transponders[0]) == 88U,
-               "Astra 19.2E sweep contains 88 transponders");
+               sizeof(astra_19e_transponders[0]) == 99U,
+               "Astra 19.2E built-in sweep contains 99 transponders");
     TEST_CHECK(astra_19e_transponders[0].frequency_mhz == 10729U &&
                astra_19e_transponders[0].polarization == 'V' &&
-               astra_19e_transponders[87].frequency_mhz == 12669U &&
-               astra_19e_transponders[87].polarization == 'V',
+               astra_19e_transponders[98].frequency_mhz == 12669U &&
+               astra_19e_transponders[98].polarization == 'V',
                "Astra transponder sweep boundaries are intact");
+
+    {
+        const char *table_path = "soralink-selftest-transponders.tmp";
+        FILE *table_file = fopen(table_path, "wb");
+        satellite_transponder_t *table_items = NULL;
+        size_t table_count = 0U;
+        char table_message[256];
+        bool table_written = false;
+        if (table_file != NULL) {
+            table_written = fputs(
+                "[test-sat]\n10729,V,23500\n11000 H 22000\n",
+                table_file) != EOF && fclose(table_file) == 0;
+        }
+        TEST_CHECK(table_written &&
+                   load_transponder_table_section(
+                       table_path, "test-sat", &table_items, &table_count,
+                       table_message, sizeof(table_message)) &&
+                   table_count == 2U &&
+                   table_items[0].frequency_mhz == 10729U &&
+                   table_items[0].polarization == 'V' &&
+                   table_items[1].frequency_mhz == 11000U &&
+                   table_items[1].symbol_rate_ks == 22000U,
+                   "Configured full-sweep table parser loads preset sections");
+        free(table_items);
+        remove(table_path);
+    }
 
     build_permission_claim(frame);
     memset(response, 0, sizeof(response));
@@ -9260,6 +10233,10 @@ int main(int argc, char **argv)
     }
     if (opt.self_test) {
         result = run_self_tests() ? EXIT_SUCCESS : EXIT_FAILURE;
+        goto cleanup;
+    }
+    if (opt.http_server &&
+        !ensure_default_channel_list(opt.channels_path)) {
         goto cleanup;
     }
 

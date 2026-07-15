@@ -78,22 +78,27 @@
 
             <div class="hero-space-art" aria-hidden="true">
               <div class="hero-orbits"></div>
-              <div class="hero-horizon"></div>
-              <div class="hero-dish">
-                <span class="dish-bowl"></span>
-                <span class="dish-feed"></span>
-                <span class="dish-mast"></span>
-              </div>
               <div class="hero-console-deck"></div>
             </div>
 
-            <div class="mascot-stage" aria-label="SORALink mascot">
+            <div class="mascot-stage" aria-hidden="true">
               <div class="mascot-halo"></div>
-              <img src="/admin/assets/soralink-mascot.png" alt="Seated SORALink mascot presenting Mission Control">
             </div>
           </article>
 
           <div class="telemetry-row">
+            <!--
+              Two perfectly aligned mascot copies create the depth effect: the
+              rear copy continues behind the cards while the clipped front copy
+              keeps her upper body seated above their top edge.
+            -->
+            <img class="mascot-overlap mascot-overlap-rear"
+                 src="/admin/assets/soralink-mascot.png" alt="" aria-hidden="true" draggable="false">
+            <img class="mascot-overlap mascot-overlap-front"
+                 src="/admin/assets/soralink-mascot.png"
+                 alt="Seated SORALink mascot presenting Mission Control" draggable="false">
+            <div class="mascot-seat-edge" aria-hidden="true"></div>
+
             <article class="telemetry-card glass-panel"><span>Signal state</span><strong id="telemetry-signal">IDLE</strong><small id="telemetry-protocol">Protocol ready</small></article>
             <article class="telemetry-card glass-panel"><span>Connected viewers</span><strong id="telemetry-viewers">0</strong><small id="telemetry-capacity">Capacity 0</small></article>
             <article class="telemetry-card glass-panel"><span>Transport blocks</span><strong id="telemetry-blocks">0</strong><small id="telemetry-errors">0 timeouts</small></article>
@@ -277,7 +282,7 @@
             </div>
 
             <form id="settings-form" class="settings-form">
-              <label><span>Maximum simultaneous clients</span><input id="setting-max-clients" name="max_clients" type="number" min="1" max="64" required></label>
+              <label><span>Maximum simultaneous clients</span><input id="setting-max-clients" name="max_clients" type="number" min="1" max="64" required><small class="field-help" id="max-clients-help">Existing streams stay connected when this limit is lowered.</small></label>
               <label><span>Tuning wait</span><div class="unit-field"><input id="setting-wait-ms" name="wait_ms" type="number" min="0" max="60000" required><b>ms</b></div></label>
               <label><span>Network timeout</span><div class="unit-field"><input id="setting-timeout-ms" name="timeout_ms" type="number" min="100" max="60000" required><b>ms</b></div></label>
               <label><span>Missing stream key policy</span><select id="setting-missing-key" name="missing_key"><option value="pass">Pass encrypted packets</option><option value="drop">Drop encrypted packets</option></select></label>
@@ -290,7 +295,7 @@
               <div class="settings-section-title"><span>Receiver channel scan</span><small>Manual or scheduled scans rebuild the Device lineup and populate its DVB EPG cache. Scans only start while idle.</small></div>
               <label><span>Automatic scan interval</span><div class="unit-field"><input id="setting-device-scan-minutes" type="number" min="0" max="10080" required><b>min</b></div></label>
               <label><span>Scan timeout</span><div class="unit-field"><input id="setting-device-scan-timeout" type="number" min="1" max="120" required><b>min</b></div></label>
-              <label class="full-row"><span>Scan method</span><select id="setting-device-scan-mode"><option value="110">Astra 19.2°E full sweep · 88 transponders</option><option value="0">Device internal scan · stored transponder table</option></select><small class="field-help" id="scan-mode-help">The Astra sweep tunes and scans every bundled Astra 19.2°E transponder, then merges the services locally.</small></label>
+              <label class="full-row"><span>Scan method</span><select id="setting-device-scan-mode"><option value="110">Full selected-satellite sweep · configured transponder table</option><option value="0">Quick Device scan · receiver stored table</option></select><small class="field-help" id="scan-mode-help">A full sweep tunes every detailed entry from the selected preset section and merges the services locally.</small></label>
               <label><span>Sort mode</span><select id="setting-device-scan-sort"><option value="0">Device default</option><option value="1">Service name</option><option value="2">Service type</option><option value="3">Frequency/order</option></select></label>
               <label><span>Search range code</span><input id="setting-device-scan-range" type="number" min="0" max="7" required></label>
               <label><span>Ordering code</span><input id="setting-device-scan-order" type="number" min="0" max="3" required></label>
@@ -312,7 +317,7 @@
                   <option value="eutelsat-9e">Eutelsat 9.0° East · 26 TP</option>
                   <option value="hotbird-13e">Hot Bird 13.0° East · 73 TP</option>
                   <option value="eutelsat-16e">Eutelsat 16.0° East · 40 TP</option>
-                  <option value="astra-19.2e">Astra 19.2° East · 88 TP · bundled sweep</option>
+                  <option value="astra-19.2e">Astra 19.2° East · 88 TP</option>
                   <option value="astra-23.5e">Astra 23.5° East · 26 TP</option>
                   <option value="badr-26e">Badr 26.0° East · 15 TP</option>
                   <option value="astra-28.2e">Astra 28.2° East · 59 TP</option>
@@ -355,6 +360,7 @@
               <div><dt>Last receiver scan</dt><dd id="info-device-scan-last">Never</dd></div>
               <div><dt>Receiver update status</dt><dd id="info-device-message">Idle</dd></div>
             </dl>
+            <button class="secondary-button admin-logout-button" id="admin-logout" type="button" hidden>Sign out administrator</button>
           </aside>
         </div>
       </section>
@@ -389,8 +395,37 @@
       <span>Data rate <b id="footer-rate">0.00 Mbps</b></span>
       <span>Current service <b id="footer-channel">Idle</b></span>
       <span>EPG <b id="footer-epg">0 programmes</b></span>
-      <span class="footer-version">Web UI v1.0</span>
+      <span class="footer-version">Web UI v1.1</span>
     </footer>
+  </div>
+
+  <div class="modal-layer" id="admin-login-modal" hidden>
+    <div class="modal-backdrop" aria-hidden="true"></div>
+    <section class="webui-modal login-modal" role="dialog" aria-modal="true" aria-labelledby="admin-login-title" aria-describedby="admin-login-description">
+      <span class="section-label">Secure administration</span>
+      <h2 id="admin-login-title">Administrator login</h2>
+      <p id="admin-login-description">Enter the administrator username and password configured for SORALink.</p>
+      <form id="admin-login-form" class="modal-form">
+        <label><span>Username</span><input id="admin-login-username" name="username" type="text" autocomplete="username" required></label>
+        <label><span>Password</span><input id="admin-login-password" name="password" type="password" autocomplete="current-password" required></label>
+        <p class="modal-error" id="admin-login-error" role="alert" hidden></p>
+        <button class="primary-button modal-primary" id="admin-login-submit" type="submit">Sign in</button>
+      </form>
+    </section>
+  </div>
+
+  <div class="modal-layer" id="webui-dialog" hidden>
+    <div class="modal-backdrop" id="webui-dialog-backdrop" aria-hidden="true"></div>
+    <section class="webui-modal" role="dialog" aria-modal="true" aria-labelledby="webui-dialog-title" aria-describedby="webui-dialog-message">
+      <span class="section-label" id="webui-dialog-label">Mission Control</span>
+      <h2 id="webui-dialog-title">Confirm action</h2>
+      <p id="webui-dialog-message"></p>
+      <label class="dialog-value" id="webui-dialog-value-wrap" hidden><span>Value</span><input id="webui-dialog-value" type="text" readonly></label>
+      <div class="modal-actions">
+        <button class="secondary-button" id="webui-dialog-cancel" type="button">Cancel</button>
+        <button class="primary-button" id="webui-dialog-confirm" type="button">Continue</button>
+      </div>
+    </section>
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>

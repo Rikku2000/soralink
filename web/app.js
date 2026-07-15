@@ -25,30 +25,37 @@ const state = {
   statusLoading: false,
   settingsDirty: false,
   lastError: '',
-  toastTimer: null
+  toastTimer: null,
+  authReady: false,
+  authRequired: false,
+  authenticated: false,
+  loginVisible: false,
+  dialogResolve: null,
+  dialogCancelable: true,
+  dialogPreviousFocus: null
 };
 
 
 const SATELLITE_PRESETS = Object.freeze({
-  'hispasat-30w': {label: 'Hispasat 30.0°W', orbital: 300, west: true, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 23},
-  'eutelsat-5w': {label: 'Eutelsat 5.0°W', orbital: 50, west: true, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 10},
-  'amos-4w': {label: 'Amos 4.0°W', orbital: 40, west: true, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 2},
-  'thor-0.8w': {label: 'Thor 0.8°W', orbital: 8, west: true, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 65},
-  'bulgariasat-1.9e': {label: 'BulgariaSat 1.9°E', orbital: 19, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 16},
-  'astra-4.8e': {label: 'Astra 4.8°E', orbital: 48, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 14},
-  'eutelsat-7e': {label: 'Eutelsat 7.0°E', orbital: 70, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 11},
-  'eutelsat-9e': {label: 'Eutelsat 9.0°E', orbital: 90, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 26},
-  'hotbird-13e': {label: 'Hot Bird 13.0°E', orbital: 130, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 73},
-  'eutelsat-16e': {label: 'Eutelsat 16.0°E', orbital: 160, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 40},
-  'astra-19.2e': {label: 'Astra 19.2°E', orbital: 192, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 88, bundledSweep: true},
-  'astra-23.5e': {label: 'Astra 23.5°E', orbital: 235, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 26},
-  'badr-26e': {label: 'Badr 26.0°E', orbital: 260, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 15},
-  'astra-28.2e': {label: 'Astra 28.2°E', orbital: 282, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 59},
-  'eutelsat-33e': {label: 'Eutelsat 33.0°E', orbital: 330, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 1},
-  'hellas-sat-39e': {label: 'Hellas Sat 39.0°E', orbital: 390, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 30},
-  'turksat-42e': {label: 'Türksat 42.0°E', orbital: 420, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 43},
-  'intelsat-45e': {label: 'Intelsat 45.0°E', orbital: 450, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 1},
-  'monacosat-52e': {label: 'MonacoSat 52.0°E', orbital: 520, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 22}
+  'hispasat-30w': {label: 'Hispasat 30.0°W', orbital: 300, west: true, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 43},
+  'eutelsat-5w': {label: 'Eutelsat 5.0°W', orbital: 50, west: true, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 22},
+  'amos-4w': {label: 'Amos 4.0°W', orbital: 40, west: true, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 6},
+  'thor-0.8w': {label: 'Thor 0.8°W', orbital: 8, west: true, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 66},
+  'bulgariasat-1.9e': {label: 'BulgariaSat 1.9°E', orbital: 19, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 14},
+  'astra-4.8e': {label: 'Astra 4.8°E', orbital: 48, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 21},
+  'eutelsat-7e': {label: 'Eutelsat 7.0°E', orbital: 70, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 166},
+  'eutelsat-9e': {label: 'Eutelsat 9.0°E', orbital: 90, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 29},
+  'hotbird-13e': {label: 'Hot Bird 13.0°E', orbital: 130, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 102},
+  'eutelsat-16e': {label: 'Eutelsat 16.0°E', orbital: 160, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 79},
+  'astra-19.2e': {label: 'Astra 19.2°E', orbital: 192, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 99, builtInSweep: true},
+  'astra-23.5e': {label: 'Astra 23.5°E', orbital: 235, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 72},
+  'badr-26e': {label: 'Badr 26.0°E', orbital: 260, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 76},
+  'astra-28.2e': {label: 'Astra 28.2°E', orbital: 282, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 85},
+  'eutelsat-33e': {label: 'Eutelsat 33.0°E', orbital: 330, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 25},
+  'hellas-sat-39e': {label: 'Hellas Sat 39.0°E', orbital: 390, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 55},
+  'turksat-42e': {label: 'Türksat 42.0°E', orbital: 420, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 124},
+  'intelsat-45e': {label: 'Intelsat 45.0°E', orbital: 450, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 4},
+  'monacosat-52e': {label: 'MonacoSat 52.0°E', orbital: 520, west: false, low: 9750, high: 10600, switchMHz: 11700, tone: 'auto', transponders: 20}
 });
 
 function matchingSatellitePreset(config = {}) {
@@ -73,7 +80,7 @@ function updateSatellitePresetSummary() {
   const summary = $('#satellite-preset-summary');
   if (!summary) return;
   if (preset) {
-    text(summary, `${preset.label} · ${preset.transponders} Satindex transponders · Universal LNB ${preset.low}/${preset.high} MHz`);
+    text(summary, `${preset.label} · ${preset.transponders} configured transponders · Universal LNB ${preset.low}/${preset.high} MHz`);
   } else {
     const orbital = Number($('#setting-orbital-tenths')?.value || 0) / 10;
     const direction = $('#setting-orbital-direction')?.value === '1' ? 'W' : 'E';
@@ -93,7 +100,7 @@ function applySatellitePreset(key) {
   $('#setting-lnb-high').value = preset.high;
   $('#setting-lnb-switch').value = preset.switchMHz;
   $('#setting-tone').value = preset.tone;
-  $('#setting-device-scan-mode').value = preset.bundledSweep ? '110' : '0';
+  $('#setting-device-scan-mode').value = '110';
   updateSatellitePresetSummary();
   updateScanMethodHelp();
 }
@@ -104,12 +111,14 @@ function updateScanMethodHelp() {
   const help = $('#scan-mode-help');
   if (!help) return;
   const preset = SATELLITE_PRESETS[presetKey];
-  if (mode === 110 && preset?.bundledSweep) {
-    text(help, `${preset.label} software sweep: ${preset.transponders} bundled transponders are tuned and scanned one by one, then merged locally.`);
-  } else if (mode === 110) {
-    text(help, `${preset?.label || 'This satellite'} has no bundled transponder sweep yet. SORALink will fall back to the Device internal scan.`);
+  const tablePath = state.status?.config?.transponder_table_path || 'transponders.conf';
+  if (mode === 110) {
+    const source = preset?.builtInSweep
+      ? `the [${presetKey}] section in ${tablePath}, with the built-in Astra table as a fallback`
+      : `the [${presetKey}] section in ${tablePath}`;
+    text(help, `${preset?.label || 'Custom satellite'} full sweep uses ${source}. It tunes every detailed frequency entry one by one and never silently falls back to the quick Device scan. Configured list size: ${preset?.transponders ?? 'custom'} transponders.`);
   } else {
-    text(help, `Uses the Device internal transponder table for ${preset?.label || 'the selected satellite'}. Satindex lists ${preset?.transponders ?? 'unknown'} transponders, but this firmware may store fewer.`);
+    text(help, `Quick Device scan uses only the transponder table stored inside the receiver for ${preset?.label || 'the selected satellite'}. It can finish much faster and may find fewer services than a full preset sweep.`);
   }
 }
 
@@ -178,12 +187,208 @@ function toast(message, error = false) {
   state.toastTimer = window.setTimeout(() => element.classList.remove('show'), 3200);
 }
 
+function setAdminLoginVisible(visible, message = '') {
+  const modal = $('#admin-login-modal');
+  const error = $('#admin-login-error');
+  if (!modal) return;
+  state.loginVisible = Boolean(visible);
+  modal.hidden = !visible;
+  document.body.classList.toggle('auth-locked', Boolean(visible));
+  if (error) {
+    text(error, message);
+    error.hidden = !message;
+  }
+  if (visible) {
+    window.setTimeout(() => $('#admin-login-username')?.focus(), 0);
+  }
+}
+
+function requireAdminLogin(message = '') {
+  if (state.dialogResolve) closeWebuiDialog(false);
+  state.authReady = true;
+  state.authRequired = true;
+  state.authenticated = false;
+  state.status = null;
+  $('#admin-logout')?.setAttribute('hidden', '');
+  setOnlineState(false, 'Administrator login required.');
+  setAdminLoginVisible(true, message);
+}
+
+async function checkAuthentication() {
+  try {
+    const response = await fetch('/admin/api/auth', {
+      cache: 'no-store',
+      credentials: 'same-origin'
+    });
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+    const auth = await response.json();
+    state.authReady = true;
+    state.authRequired = Boolean(auth.required);
+    state.authenticated = Boolean(auth.authenticated);
+    $('#admin-logout')?.toggleAttribute('hidden', !state.authRequired || !state.authenticated);
+    if (state.authRequired && !state.authenticated) {
+      requireAdminLogin();
+      return;
+    }
+    setAdminLoginVisible(false);
+    await fetchStatus();
+  } catch (error) {
+    state.authReady = true;
+    state.lastError = error.message || 'Authentication check failed';
+    setOnlineState(false, state.lastError);
+  }
+}
+
+async function submitAdminLogin(event) {
+  event.preventDefault();
+  const username = $('#admin-login-username')?.value || '';
+  const password = $('#admin-login-password')?.value || '';
+  const submit = $('#admin-login-submit');
+  const errorElement = $('#admin-login-error');
+  if (submit) {
+    submit.disabled = true;
+    submit.textContent = 'Signing in…';
+  }
+  if (errorElement) errorElement.hidden = true;
+
+  try {
+    const body = new URLSearchParams({username, password});
+    const response = await fetch('/admin/login', {
+      method: 'POST',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'},
+      body
+    });
+    let payload = null;
+    try { payload = await response.json(); } catch { }
+    if (!response.ok) {
+      throw new Error(payload?.message || `${response.status} ${response.statusText}`);
+    }
+    state.authRequired = Boolean(payload?.authentication_required ?? true);
+    state.authenticated = true;
+    $('#admin-login-password').value = '';
+    $('#admin-logout')?.toggleAttribute('hidden', !state.authRequired);
+    setAdminLoginVisible(false);
+    toast('Administrator signed in');
+    await fetchStatus();
+  } catch (error) {
+    setAdminLoginVisible(true, error.message || 'Sign-in failed.');
+    $('#admin-login-password')?.focus();
+    $('#admin-login-password')?.select();
+  } finally {
+    if (submit) {
+      submit.disabled = false;
+      submit.textContent = 'Sign in';
+    }
+  }
+}
+
+async function logoutAdmin() {
+  try {
+    await fetch('/admin/logout', {
+      method: 'POST',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'},
+      body: new URLSearchParams()
+    });
+  } finally {
+    state.authenticated = false;
+    state.status = null;
+    requireAdminLogin('You have signed out.');
+  }
+}
+
+function closeWebuiDialog(result) {
+  const modal = $('#webui-dialog');
+  if (!modal || modal.hidden) return;
+  modal.hidden = true;
+  const resolve = state.dialogResolve;
+  state.dialogResolve = null;
+  const previous = state.dialogPreviousFocus;
+  state.dialogPreviousFocus = null;
+  if (previous instanceof HTMLElement) previous.focus();
+  if (resolve) resolve(result);
+}
+
+function openWebuiDialog({
+  title,
+  message,
+  label = 'Mission Control',
+  symbol = '!',
+  confirmText = 'Continue',
+  cancelText = 'Cancel',
+  cancelable = true,
+  value = null,
+  danger = false
+}) {
+  const modal = $('#webui-dialog');
+  if (!modal) return Promise.resolve(false);
+  if (state.dialogResolve) closeWebuiDialog(false);
+  state.dialogPreviousFocus = document.activeElement;
+  state.dialogCancelable = Boolean(cancelable);
+  text($('#webui-dialog-title'), title);
+  text($('#webui-dialog-message'), message);
+  text($('#webui-dialog-label'), label);
+  text($('#webui-dialog-symbol'), symbol);
+  text($('#webui-dialog-confirm'), confirmText);
+  text($('#webui-dialog-cancel'), cancelText);
+  const cancel = $('#webui-dialog-cancel');
+  const confirm = $('#webui-dialog-confirm');
+  const valueWrap = $('#webui-dialog-value-wrap');
+  const valueInput = $('#webui-dialog-value');
+  cancel.hidden = !cancelable;
+  confirm.classList.toggle('danger-button', Boolean(danger));
+  confirm.classList.toggle('primary-button', !danger);
+  valueWrap.hidden = value == null;
+  valueInput.value = value == null ? '' : String(value);
+  modal.hidden = false;
+
+  return new Promise((resolve) => {
+    state.dialogResolve = resolve;
+    window.setTimeout(() => {
+      if (value != null) {
+        valueInput.focus();
+        valueInput.select();
+      } else {
+        confirm.focus();
+      }
+    }, 0);
+  });
+}
+
+function confirmPopup(message, title = 'Confirm action', confirmText = 'Continue', danger = false) {
+  return openWebuiDialog({title, message, confirmText, danger, symbol: danger ? '!' : '◇'});
+}
+
+function alertPopup(message, title = 'Mission Control alert') {
+  return openWebuiDialog({
+    title,
+    message,
+    confirmText: 'Close',
+    cancelable: false,
+    symbol: '!'
+  });
+}
+
+function copyFallbackPopup(value) {
+  return openWebuiDialog({
+    title: 'Copy value',
+    message: 'Clipboard access is unavailable. The value is selected below; press Ctrl+C or use your device copy command.',
+    confirmText: 'Close',
+    cancelable: false,
+    value,
+    symbol: '⧉'
+  });
+}
+
 async function copyText(value, successMessage = 'Copied to clipboard') {
   try {
     await navigator.clipboard.writeText(value);
     toast(successMessage);
   } catch {
-    window.prompt('Copy this value:', value);
+    await copyFallbackPopup(value);
   }
 }
 
@@ -260,15 +465,20 @@ function viewFromHash() {
 }
 
 async function fetchStatus() {
-  if (state.statusLoading) return;
+  if (state.statusLoading || (state.authRequired && !state.authenticated)) return;
   state.statusLoading = true;
   try {
     const response = await fetch('/admin/api/status', {
       cache: 'no-store',
       credentials: 'same-origin'
     });
+    if (response.status === 401) {
+      requireAdminLogin('Your administrator session has expired.');
+      return;
+    }
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
     state.status = await response.json();
+    state.authenticated = true;
     state.lastError = '';
     setOnlineState(true, `${Number(state.status.clients || 0)} viewer(s) connected.`);
     renderGlobalStatus();
@@ -295,6 +505,10 @@ async function postAction(path, values = {}, successMessage = 'Action completed'
       headers: {'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'},
       body
     });
+    if (response.status === 401) {
+      requireAdminLogin('Your administrator session has expired.');
+      return false;
+    }
     if (!response.ok) {
       const detail = (await response.text()).trim();
       throw new Error(detail || `${response.status} ${response.statusText}`);
@@ -303,7 +517,7 @@ async function postAction(path, values = {}, successMessage = 'Action completed'
     await fetchStatus();
     return true;
   } catch (error) {
-    toast(error.message || 'Action failed', true);
+    await alertPopup(error.message || 'Action failed', 'Action failed');
     return false;
   }
 }
@@ -508,6 +722,10 @@ async function loadGuide(lcn) {
       cache: 'no-store',
       credentials: 'same-origin'
     });
+    if (response.status === 401) {
+      requireAdminLogin('Your administrator session has expired.');
+      return;
+    }
     if (!response.ok) {
       const detail = (await response.text()).trim();
       throw new Error(detail || `${response.status} ${response.statusText}`);
@@ -515,7 +733,7 @@ async function loadGuide(lcn) {
     state.guidePayload = await response.json();
   } catch (error) {
     state.guidePayload = {programmes: []};
-    toast(`EPG: ${error.message}`, true);
+    await alertPopup(`EPG: ${error.message}`, 'Programme guide error');
   } finally {
     state.guideLoading = false;
     renderGuide();
@@ -637,7 +855,7 @@ function renderViewers() {
 
 async function disconnectViewer(viewer) {
   const label = viewer.host || `viewer ${viewer.id}`;
-  if (!window.confirm(`Disconnect ${label}?`)) return;
+  if (!await confirmPopup(`Disconnect ${label}?`, 'Disconnect viewer', 'Disconnect', true)) return;
   await postAction('/admin/kick', {id: viewer.id}, `${label} disconnected`);
 }
 
@@ -690,7 +908,11 @@ function renderSettings() {
   if (!data) return;
   const config = data.config || {};
 
+  const connectedViewers = Number(data.clients || 0);
   $('#setting-max-clients').value = Number(data.max_clients || 1);
+  text($('#max-clients-help'), connectedViewers > 0
+    ? `${connectedViewers} viewer${connectedViewers === 1 ? '' : 's'} currently connected. Lowering the limit keeps those streams connected and blocks new viewers until usage drops below the new limit.`
+    : 'Existing streams stay connected when this limit is lowered.');
   $('#setting-wait-ms').value = Number(config.wait_ms || 0);
   $('#setting-timeout-ms').value = Number(config.timeout_ms || 3000);
   $('#setting-missing-key').value = config.missing_key || 'pass';
@@ -722,7 +944,7 @@ function renderSettings() {
   $('#setting-persist').disabled = !config.config_active;
   $('#setting-persist').checked = Boolean(config.config_active);
 
-  text($('#info-admin-auth'), config.admin_auth ? 'Enabled' : 'Disabled');
+  text($('#info-admin-auth'), config.admin_auth ? 'Enabled · popup session' : (config.viewer_auth ? 'Uses viewer login · popup session' : 'Disabled'));
   text($('#info-viewer-auth'), config.viewer_auth ? 'Enabled' : 'Disabled');
   text($('#info-config-path'), config.config_active ? config.config_path : 'CLI only');
   text($('#info-channels-path'), config.channels_path || '—');
@@ -739,8 +961,9 @@ function renderSettings() {
 
   const progress = Math.max(0, Math.min(100, Number(device.scan_progress || 0)));
   text($('#receiver-scan-title'), device.scan_running ? `Scanning · ${progress}%` : (device.last_scan_success_utc ? 'Last scan completed' : 'Idle'));
+  const scanMethod = Number(device.scan_mode || 0) === 110 ? 'full preset sweep' : 'quick Device scan';
   text($('#receiver-scan-detail'), device.scan_running
-    ? `${Number(device.scan_frequency_mhz || 0)} MHz · ${Number(device.scan_symbol_rate_ks || 0)} kSym/s · mode ${Number(device.scan_mode || 0)}`
+    ? `${Number(device.scan_frequency_mhz || 0)} MHz · ${Number(device.scan_symbol_rate_ks || 0)} kSym/s · ${scanMethod}`
     : (device.last_message || 'No scan is running.'));
   $('#receiver-scan-progress').style.width = `${progress}%`;
   text($('#receiver-scan-tv'), Number(device.scan_tv_count || 0));
@@ -769,6 +992,7 @@ function collectSettingsValues() {
     device_scan_network: $('#setting-device-scan-network').checked ? 1 : 0,
     device_scan_epg_after: $('#setting-device-scan-epg').checked ? 1 : 0,
     device_scan_apply_satellite: $('#setting-device-scan-apply-satellite').checked ? 1 : 0,
+    satellite_preset: $('#setting-satellite-preset').value,
     orbital_tenths: $('#setting-orbital-tenths').value,
     west: $('#setting-orbital-direction').value,
     tone: $('#setting-tone').value,
@@ -784,7 +1008,13 @@ function collectSettingsValues() {
 async function submitSettings(event) {
   event.preventDefault();
   const values = collectSettingsValues();
-  const ok = await postAction('/admin/settings', values, values.persist ? 'Settings applied and saved' : 'Settings applied');
+  const requestedLimit = Number(values.max_clients || 0);
+  const connectedViewers = Number(state.status?.clients || 0);
+  const loweredBelowUsage = requestedLimit > 0 && requestedLimit < connectedViewers;
+  const successMessage = loweredBelowUsage
+    ? `Settings applied${values.persist ? ' and saved' : ''} · current viewers remain connected`
+    : (values.persist ? 'Settings applied and saved' : 'Settings applied');
+  const ok = await postAction('/admin/settings', values, successMessage);
   if (ok) state.settingsDirty = false;
 }
 
@@ -836,6 +1066,23 @@ function renderActiveView() {
 }
 
 function bindEvents() {
+  $('#admin-login-form')?.addEventListener('submit', submitAdminLogin);
+  $('#admin-logout')?.addEventListener('click', async () => {
+    if (await confirmPopup('End this administrator session?', 'Sign out administrator', 'Sign out')) {
+      await logoutAdmin();
+    }
+  });
+  $('#webui-dialog-confirm')?.addEventListener('click', () => closeWebuiDialog(true));
+  $('#webui-dialog-cancel')?.addEventListener('click', () => closeWebuiDialog(false));
+  $('#webui-dialog-backdrop')?.addEventListener('click', () => {
+    if (state.dialogCancelable) closeWebuiDialog(false);
+  });
+  window.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && state.dialogResolve && state.dialogCancelable) {
+      closeWebuiDialog(false);
+    }
+  });
+
   $$('[data-view-target]').forEach((button) => {
     button.addEventListener('click', (event) => {
       event.preventDefault();
@@ -854,8 +1101,8 @@ function bindEvents() {
   });
   $('#overview-reload').addEventListener('click', () => postAction('/admin/reload', {}, 'Local channels and EPG reloaded'));
   $('#overview-device-sync').addEventListener('click', () => postAction('/admin/device/update-all', {}, 'Receiver channels and EPG updated'));
-  $('#overview-device-scan').addEventListener('click', () => {
-    if (!window.confirm('Start a receiver channel scan? This rebuilds the dongle lineup and can take several minutes. No viewers may be connected.')) return;
+  $('#overview-device-scan').addEventListener('click', async () => {
+    if (!await confirmPopup('This rebuilds the dongle lineup and can take several minutes. No viewers may be connected.', 'Start receiver scan', 'Start scan')) return;
     postAction('/admin/device/scan', {}, 'Receiver channel scan started');
   });
   $('#overview-playlist').addEventListener('click', () => window.open('/playlist.m3u', '_blank', 'noopener'));
@@ -872,8 +1119,8 @@ function bindEvents() {
   });
   $('#channels-reload').addEventListener('click', () => postAction('/admin/reload', {}, 'Local channels and EPG reloaded'));
   $('#channels-device-update').addEventListener('click', () => postAction('/admin/device/update-channels', {}, 'Channel list updated from receiver'));
-  $('#channels-device-scan').addEventListener('click', () => {
-    if (!window.confirm('Start a receiver channel scan and rebuild the lineup?')) return;
+  $('#channels-device-scan').addEventListener('click', async () => {
+    if (!await confirmPopup('Start a receiver channel scan and rebuild the lineup?', 'Rebuild channel lineup', 'Start scan')) return;
     postAction('/admin/device/scan', {}, 'Receiver channel scan started');
   });
   $('#channels-open-playlist').addEventListener('click', () => window.open('/playlist.m3u', '_blank', 'noopener'));
@@ -890,14 +1137,14 @@ function bindEvents() {
     const ok = await postAction('/admin/reload-epg', {}, 'EPG reloaded');
     if (ok && state.guideLcn != null) await loadGuide(state.guideLcn);
   });
-  $('#guide-copy-stream').addEventListener('click', () => {
+  $('#guide-copy-stream').addEventListener('click', async () => {
     const channel = channelByLcn(state.guideLcn);
-    if (!channel) return toast('Choose a channel first.', true);
-    copyText(sameOriginUrl(channel.stream_url), `${channel.name} stream URL copied`);
+    if (!channel) return alertPopup('Choose a channel first.', 'No channel selected');
+    await copyText(sameOriginUrl(channel.stream_url), `${channel.name} stream URL copied`);
   });
 
-  $('#viewers-disconnect-all').addEventListener('click', () => {
-    if (!window.confirm('Disconnect every active viewer?')) return;
+  $('#viewers-disconnect-all').addEventListener('click', async () => {
+    if (!await confirmPopup('Disconnect every active viewer?', 'Disconnect all viewers', 'Disconnect all', true)) return;
     postAction('/admin/kick-all', {}, 'All viewers disconnected');
   });
 
@@ -914,11 +1161,11 @@ function bindEvents() {
   $('#settings-start-scan').addEventListener('click', async () => {
     const presetKey = $('#setting-satellite-preset').value;
     const preset = SATELLITE_PRESETS[presetKey];
-    const bundledSweep = $('#setting-device-scan-mode').value === '110' && Boolean(preset?.bundledSweep);
-    const prompt = bundledSweep
-      ? `Start the ${preset.label} sweep across ${preset.transponders} transponders? This can take several minutes. The merged lineup and EPG will replace the current files only after completion.`
-      : `Apply the ${preset?.label || 'custom satellite'} profile, then start the Device internal channel scan? Satindex lists ${preset?.transponders ?? 'an unknown number of'} transponders, but the Device may scan only its stored subset.`;
-    if (!window.confirm(prompt)) return;
+    const fullSweep = $('#setting-device-scan-mode').value === '110';
+    const prompt = fullSweep
+      ? `Start the ${preset?.label || 'custom satellite'} full sweep? SORALink will read section [${presetKey}] from the configured transponder table${preset?.builtInSweep ? ' (or use the built-in Astra fallback)' : ''}, tune every listed transponder, and merge the results. Configured list size: ${preset?.transponders ?? 'custom'}. If that section is missing, the scan stops with an error instead of running the quick scan.`
+      : `Start the quick Device internal scan for ${preset?.label || 'the selected satellite'}? This uses only the table stored in the receiver and may scan fewer transponders than the listed ${preset?.transponders ?? 'unknown'} entries.`;
+    if (!await confirmPopup(prompt, 'Start satellite scan', 'Start scan')) return;
     const values = collectSettingsValues();
     const applied = await postAction('/admin/settings', values, values.persist ? 'Scan settings applied and saved' : 'Scan settings applied');
     if (!applied) return;
@@ -957,13 +1204,15 @@ function bindEvents() {
   });
 
   $('#diagnostics-refresh').addEventListener('click', fetchStatus);
-  $('#diagnostics-copy-json').addEventListener('click', () => {
-    if (!state.status) return toast('No status JSON is available.', true);
-    copyText(JSON.stringify(state.status, null, 2), 'Status JSON copied');
+  $('#diagnostics-copy-json').addEventListener('click', async () => {
+    if (!state.status) return alertPopup('No status JSON is available.', 'Diagnostics unavailable');
+    await copyText(JSON.stringify(state.status, null, 2), 'Status JSON copied');
   });
 }
 
 bindEvents();
 switchView(viewFromHash(), false);
-fetchStatus();
-window.setInterval(fetchStatus, 2000);
+checkAuthentication();
+window.setInterval(() => {
+  if (state.authReady && (!state.authRequired || state.authenticated)) fetchStatus();
+}, 2000);
