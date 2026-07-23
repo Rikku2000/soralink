@@ -2,16 +2,38 @@
 
 ![SORALink](soralink.jpg)
 
-SORALink is a compact C bridge between a compatible network satellite tuner/dongle and [VLC media player](https://www.videolan.org/vlc/).
+SORALink is a compact C bridge between network satellite receivers and [VLC media player](https://www.videolan.org/vlc/).
 
-It acquires the receiver's exclusive control session, tunes saved programmes or DVB-S services, requests MPEG transport-stream blocks, validates and processes the packets, and forwards the resulting stream to VLC.
+It supports two receiver backends:
 
-The recommended operating mode is the built-in HTTP/HTTPS server. It provides VLC-compatible M3U playlists, shared MPEG-TS streaming, an administration dashboard, XMLTV programme-guide support, and receiver-maintenance controls.
+- **WISI/S2D legacy receivers** through the original proprietary TCP/UDP protocol.
+- **SAT>IP servers**, including the **TELESTAR DIGIBIT Twin**, through RTSP/RTP.
+
+The recommended operating mode is the built-in HTTP/HTTPS server. It provides VLC-compatible M3U playlists, shared MPEG-TS streaming, an administration dashboard, channel scanning, XMLTV programme-guide support, and receiver-maintenance controls.
 
 > [!IMPORTANT]
-> SORALink uses an exclusive receiver control session. Fully close the official receiver application and every other client before starting SORALink.
+> Scans and native EPG updates require an idle upstream tuner. Close the official receiver application and stop active SORALink streams before maintenance. Legacy WISI/S2D devices also require an exclusive control session.
+
+## What's new
+
+The current release adds a complete SAT>IP path while preserving the existing WISI/S2D implementation:
+
+- TELESTAR DIGIBIT Twin and generic SAT>IP RTSP/RTP support
+- Full DVB-S/DVB-S2 tuning parameters: frequency, polarization, delivery system, modulation, roll-off, pilot, symbol rate, and FEC
+- DIGIBIT firmware compatibility handling derived from the working Android SAT>IP library
+  - Adds PID `21` when a request contains only low DVB-SI PIDs
+  - Requests PMT PIDs explicitly instead of relying on problematic `pids=all` behavior
+  - Splits large PID sets into DIGIBIT-compatible batches
+- Local SAT>IP channel discovery by parsing PAT, PMT, and SDT tables
+- Astra 19.2°E software scan using a bundled 55-transponder full-parameter table
+- Automatic generation of `channels.xml`, `/playlist.m3u`, `/tv.m3u`, and `/radio.m3u`
+- Native SAT>IP EPG collection from DVB EIT PID `18`, written as XMLTV
+- Windows-specific SAT>IP fixes for scan memory usage, RTP reception, and tuner lock timing
+- SAT>IP scan and EPG controls in the administration dashboard
 
 ## Features
+
+### Streaming and server
 
 - TV, radio, and combined M3U playlists
 - Channel selection directly from VLC
@@ -19,56 +41,84 @@ The recommended operating mode is the built-in HTTP/HTTPS server. It provides VL
 - Browser administration dashboard with live JSON APIs
 - Viewer list, throughput, current channel, and now/next programme information
 - Viewer disconnection, channel/EPG reload, and live settings controls
-- Local XMLTV loading and optional HTTP/HTTPS XMLTV download
-- Native receiver lineup and EPG refresh
-- Manual and scheduled receiver scans with progress reporting
-- Astra 19.2°E software transponder sweep in the default full-scan mode
-- Direct DVB-S tuning or tuning by saved programme index
 - UDP MPEG-TS output and optional `.ts` recording
-- Universal-LNB, 22 kHz tone, orbital-position, and DiSEqC configuration
 - Automatic control reconnection and channel retuning
 - MPEG-TS alignment and validation
-- AES-128 even/odd packet processing and PID `0x1FFE` removal
-- Viewer and administrator HTTP Basic authentication
+- Viewer and administrator authentication
 - Optional TLS 1.2+ through OpenSSL
 - DNS, IPv4, and IPv6 support
 - Windows and POSIX socket support
 - `key=value` configuration files with command-line overrides
-- Built-in protocol, parser, scan, and stream-processing self-tests
+- Built-in protocol, parser, scan, EPG, and stream-processing self-tests
+
+### WISI/S2D legacy backend
+
+- Proprietary permission, tuning, heartbeat, lineup, EPG, and scan commands
+- Tuning by saved programme index or DVB-S parameters
+- Universal-LNB, 22 kHz tone, orbital-position, and DiSEqC configuration
+- AES-128 even/odd packet processing and PID `0x1FFE` removal
+- Native receiver lineup and EPG-cache refresh
+
+### SAT>IP / DIGIBIT Twin backend
+
+- RTSP `OPTIONS`, `SETUP`, `PLAY`, keepalive, and `TEARDOWN`
+- Unicast RTP MPEG-TS reception with dynamic RTP/RTCP ports
+- Exact full-parameter DVB-S and DVB-S2 tuning
+- Software channel scan with PAT, PMT, and SDT parsing
+- Native DVB EIT programme-guide collection
+- DIGIBIT PID-list compatibility workarounds
+- Generated channel PID filtering for lower network bandwidth
+
+## Supported backends
+
+| Backend | Select with | Control | Stream transport | Channel discovery | Native EPG |
+|---|---|---|---|---|---|
+| WISI/S2D legacy | `device_type=legacy` | Proprietary TCP, normally `8802` | Proprietary UDP, normally `8800` | Receiver database or receiver/software scan | Proprietary receiver EPG cache |
+| SAT>IP / DIGIBIT Twin | `device_type=satip` or `digibit` | RTSP TCP, normally `554` | Dynamic RTP/RTCP UDP ports | SORALink software transponder scan | DVB EIT on PID `18` |
+
+The default backend remains `legacy` for backward compatibility.
 
 ## Architecture
 
 ```text
-Compatible receiver
+WISI/S2D legacy receiver
   ├─ TCP 8802: permission, tuning, heartbeat, and maintenance
   └─ UDP 8800: MPEG-TS block requests and replies
+
+SAT>IP server / DIGIBIT Twin
+  ├─ TCP 554: RTSP control
+  └─ Dynamic UDP ports: RTP MPEG-TS and RTCP
                     │
                     ▼
                  soralink
                   ├─ HTTP/HTTPS playlists and MPEG-TS → VLC clients
                   ├─ Dashboard and JSON APIs          → Web browser
-                  ├─ XMLTV/native receiver EPG        → Programme guide
+                  ├─ XMLTV/native DVB EPG             → Programme guide
                   └─ UDP MPEG-TS forwarding           → VLC
 ```
 
-The receiver ports can be changed with `--control-port` and `--stream-port`.
+The DIGIBIT Twin has two physical tuners. The current SORALink HTTP server uses one upstream tuner session at a time; many viewers can share that same tuned channel.
 
 ## Requirements
 
-- A compatible network tuner/dongle
-- Network access to its TCP control and UDP stream ports
+- A supported WISI/S2D receiver or SAT>IP server
+- Network access between SORALink and the receiver
 - VLC media player or another MPEG-TS client
 - A C11 compiler
-- A channel XML file for normal server startup, unless startup receiver refresh can create it
 - The `web/` assets when the administration dashboard is enabled
+- `transponders.conf` for custom software-scan presets
 - OpenSSL development files only when native TLS or HTTPS XMLTV downloads are required
 
-Default ports:
+`channels.xml` may be absent at first startup. SORALink creates an empty channel document so a SAT>IP scan can populate it.
 
-| Purpose | Protocol | Port |
+### Default ports
+
+| Purpose | Protocol | Default |
 |---|---:|---:|
-| Receiver control | TCP | `8802` |
-| Receiver MPEG-TS transport | UDP | `8800` |
+| WISI/S2D control | TCP | `8802` |
+| WISI/S2D MPEG-TS transport | UDP | `8800` |
+| SAT>IP RTSP control | TCP | `554` |
+| SAT>IP RTP/RTCP | UDP | Dynamic negotiated ports |
 | Local HTTP server | TCP | `8080` |
 | UDP-mode VLC output | UDP | `1234` |
 
@@ -78,10 +128,13 @@ Default ports:
 .
 ├── soralink.c
 ├── README.md
-├── channels.xml               # required for normal server startup
-├── epg.xml                    # optional XMLTV data
+├── README-SATIP.md            # additional DIGIBIT/SAT>IP notes
+├── channels.xml               # generated or supplied channel list
+├── epg.xml                    # optional/generated XMLTV data
+├── transponders.conf          # software-scan presets
 ├── soralink.conf              # optional configuration file
 ├── soralink.jpg               # optional README image
+├── Makefile
 └── web/                       # required when the dashboard is enabled
     ├── index.html
     ├── styles.css
@@ -92,9 +145,16 @@ Default ports:
     └── soralink-satellite.png
 ```
 
-`channels.xml` is resolved from the current working directory by default. `web/` and `epg.xml` default to paths beside the executable. Override them with `--channels`, `--web-root`, and `--epg`.
+`channels.xml` is resolved from the current working directory by default. `web/`, `epg.xml`, and `transponders.conf` default to paths beside the executable. Override them with `--channels`, `--web-root`, `--epg`, and `--transponder-table`.
 
 ## Build
+
+### Makefile
+
+```bash
+make clean
+make
+```
 
 ### Linux, macOS, and other POSIX systems
 
@@ -102,10 +162,18 @@ Default ports:
 cc -std=c11 -O2 -Wall -Wextra -pedantic soralink.c -o soralink
 ```
 
-### Windows with MinGW-w64
+### Windows with MinGW-w64 or w64devkit
 
 ```powershell
 gcc -std=c11 -O2 -Wall -Wextra soralink.c -o soralink.exe -lws2_32
+```
+
+With w64devkit:
+
+```bat
+cd /d C:\w64devkit\home\SORALink\content
+make clean
+make
 ```
 
 ### Windows with Microsoft Visual C++
@@ -116,7 +184,7 @@ Run this from a Developer Command Prompt:
 cl /O2 /W4 soralink.c ws2_32.lib
 ```
 
-The normal build uses the built-in AES, HTTP, XML, XMLTV, and socket implementations. It does not require a third-party runtime library.
+The normal build uses built-in AES, HTTP, XML, XMLTV, DVB table, and socket implementations. It does not require a third-party runtime library.
 
 ### Optional OpenSSL build
 
@@ -157,21 +225,18 @@ The self-test does not require a receiver:
 ./soralink --self-test
 ```
 
-The current suite checks:
+The suite checks, among other things:
 
-- AES-128 known-answer decryption and separated-hex key parsing
-- Even/odd MPEG-TS packet processing
-- Missing-key pass/drop behaviour
-- Multiline channel XML, EPG IDs, programme indexes, transport-stream IDs, and entities
-- XMLTV timestamps, UTC offsets, programme text, and entity decoding
-- Native receiver EPG XML and MJD conversion
-- HTTP Basic-auth encoding
-- HTTP/HTTPS EPG URL parsing and chunked-body decoding
-- Receiver scan command framing and status requests
-- Receiver scan flag layout
-- Astra 19.2°E transponder sweep data
-- Protocol response validation
-- Automatic LNB tone selection
+- AES-128 and MPEG-TS processing for the legacy backend
+- Channel XML and XMLTV parsing
+- DVB MJD/BCD time conversion
+- SAT>IP tuning-query generation
+- DIGIBIT PID `21` compatibility handling
+- PAT, PMT, SDT, and EIT parsing
+- SAT>IP scan service/PID generation
+- Native SAT>IP EPG XMLTV generation
+- HTTP authentication and administration APIs
+- Astra 19.2°E transponder data
 
 A successful run ends with:
 
@@ -179,62 +244,150 @@ A successful run ends with:
 Self-test result: PASS
 ```
 
-## Quick start
+## Quick start: DIGIBIT Twin / SAT>IP
 
-### 1. Probe the receiver
+Create `soralink.conf` beside the executable:
 
-```bash
-./soralink --device soralink.local --probe
+```ini
+[receiver]
+device_type=satip
+device=192.168.0.130
+control_port=554
+satip_source=1
+satip_msys=auto
+
+[server]
+server=true
+channels=channels.xml
+http_bind=0.0.0.0
+http_port=8088
+max_clients=8
+webui=true
+web_root=web
+admin_user=admin
+admin_password=CHANGE_THIS_PASSWORD
+
+[epg]
+epg=epg.xml
+epg_update=false
+epg_update_timeout_ms=30000
+
+[receiver_updates]
+# Proprietary channel downloads are not used in SAT>IP mode.
+device_channels_update=false
+
+# Native DVB EIT collection through the DIGIBIT.
+device_epg_update=true
+device_epg_refresh_minutes=240
+
+# Keep startup quick during initial setup; use the dashboard manually first.
+device_update_on_start=false
+
+# Manual scan from /admin/ when this is 0.
+device_scan_refresh_minutes=0
+device_scan_timeout_minutes=45
+device_scan_mode=110
+device_scan_epg_after=true
+satellite_preset=astra-19.2e
+transponder_table=transponders.conf
+
+[network]
+# Channel-table dwell per transponder; EPG uses a minimum of 5000 ms.
+wait_ms=5000
+timeout_ms=8000
+verbose=true
 ```
 
-A successful probe confirms that the TCP control port is reachable and that SORALink can claim the receiver session.
+Start SORALink:
 
-For non-default receiver ports:
-
-```bash
-./soralink \
-  --device soralink.local \
-  --control-port 8802 \
-  --stream-port 8800 \
-  --probe
+```bat
+soralink.exe
 ```
 
-### 2. Start the channel server
+or:
 
 ```bash
-./soralink \
-  --device soralink.local \
-  --server \
-  --channels channels.xml
+./soralink --config soralink.conf
 ```
 
-Open the combined playlist in VLC:
+Open the dashboard:
 
 ```text
-http://127.0.0.1:8080/playlist.m3u
+http://127.0.0.1:8088/admin/
 ```
 
-### 3. Open the dashboard
+From the dashboard:
 
-The dashboard is enabled by default in server mode:
+1. Start **Scan channels**.
+2. Wait for the new `channels.xml` to be installed.
+3. Start **Update EPG now** if `device_scan_epg_after` is disabled or the first EPG collection was skipped.
+4. Open a playlist in VLC.
 
 ```text
-http://127.0.0.1:8080/admin/
+http://127.0.0.1:8088/playlist.m3u
+http://127.0.0.1:8088/tv.m3u
+http://127.0.0.1:8088/radio.m3u
 ```
 
-Disable it when only the media endpoints are needed:
+Probe only the RTSP endpoint:
 
 ```bash
-./soralink --device soralink.local --server --no-webui
+./soralink --device-type satip --device 192.168.0.130 --probe
+```
+
+> [!NOTE]
+> `satip_source=1` selects the SAT>IP satellite source/DiSEqC position. It is not the physical tuner number; the server selects an available tuner.
+
+## Quick start: WISI/S2D legacy receiver
+
+```ini
+[receiver]
+device_type=legacy
+device=soralink.local
+control_port=8802
+stream_port=8800
+
+[server]
+server=true
+channels=channels.xml
+http_bind=127.0.0.1
+http_port=8080
+max_clients=8
+webui=true
+web_root=web
+
+[receiver_updates]
+device_channels_update=false
+device_epg_update=false
+device_update_on_start=true
+
+[network]
+wait_ms=800
+timeout_ms=3000
+verbose=false
+```
+
+Probe the receiver:
+
+```bash
+./soralink --device-type legacy --device soralink.local --probe
+```
+
+Start the server:
+
+```bash
+./soralink --device-type legacy --device soralink.local --server --channels channels.xml
 ```
 
 ## Server behaviour
 
 The first viewer tunes the requested channel. Additional viewers can join that same channel until `--max-clients` is reached.
 
-The receiver exposes one active tuner path. While viewers are connected, a request for a different channel receives HTTP `409 Conflict`. Once all viewers disconnect, the next request can retune the receiver.
+While viewers are connected, a request for a different channel receives HTTP `409 Conflict`. Once all viewers disconnect, the next request can retune the receiver.
 
-Receiver updates and scans require an idle tuner. New stream requests receive HTTP `503 Service Unavailable` while maintenance is active.
+Receiver updates, scans, and native EPG collection require an idle tuner. New stream requests receive HTTP `503 Service Unavailable` while maintenance is active.
+
+In SAT>IP mode, SORALink sends `TEARDOWN` when a stream or maintenance session ends. The server currently manages one active upstream channel even when the SAT>IP hardware contains multiple tuners.
 
 ## HTTP endpoints
 
@@ -246,7 +399,7 @@ Receiver updates and scans require an idle tuner. New stream requests receive HT
 | `/playlist.m3u` | `GET`, `HEAD`, `OPTIONS` | TV and radio playlist |
 | `/tv.m3u` | `GET`, `HEAD`, `OPTIONS` | TV-only playlist |
 | `/radio.m3u` | `GET`, `HEAD`, `OPTIONS` | Radio-only playlist |
-| `/status.json` | `GET`, `HEAD`, `OPTIONS` | Compact stream, viewer, channel, and AES status |
+| `/status.json` | `GET`, `HEAD`, `OPTIONS` | Compact stream, viewer, channel, and backend status |
 | `/channel/<lcn>` | `GET`, `HEAD`, `OPTIONS` | MPEG-TS stream for a logical channel number |
 
 Viewer credentials, when configured, protect all media endpoints.
@@ -257,46 +410,120 @@ Viewer credentials, when configured, protect all media endpoints.
 |---|---:|---|
 | `/admin/` | `GET` | Administration dashboard |
 | `/admin/assets/*` | `GET` | Dashboard CSS, JavaScript, and images |
-| `/admin/api/status` | `GET` | Full server, channel, viewer, EPG, configuration, and maintenance state |
+| `/admin/api/status` | `GET` | Full server, backend, channel, viewer, EPG, configuration, and maintenance state |
 | `/admin/api/epg/<lcn>` | `GET` | Up to 100 relevant programmes for one logical channel number |
 | `/admin/kick` | `POST` | Disconnect one viewer |
 | `/admin/kick-all` | `POST` | Disconnect every viewer |
 | `/admin/reload` | `POST` | Reload channels and EPG |
 | `/admin/reload-epg` | `POST` | Reload only EPG data |
 | `/admin/settings` | `POST` | Apply supported live settings and optionally persist them |
-| `/admin/device/update-channels` | `POST` | Refresh the lineup from the receiver |
-| `/admin/device/update-epg` | `POST` | Refresh XMLTV from the receiver EPG cache |
-| `/admin/device/update-all` | `POST` | Refresh lineup and EPG |
-| `/admin/device/scan` | `POST` | Start a receiver scan |
+| `/admin/device/update-channels` | `POST` | Refresh legacy lineup; unavailable for SAT>IP |
+| `/admin/device/update-epg` | `POST` | Refresh legacy EPG cache or collect SAT>IP DVB EIT |
+| `/admin/device/update-all` | `POST` | Run the supported channel/EPG maintenance actions |
+| `/admin/device/scan` | `POST` | Start a receiver scan or SAT>IP transponder sweep |
 | `/admin/device/scan-cancel` | `POST` | Cancel an active scan |
 
 Administration resources require administrator authorization. Mutating actions accept form-encoded `POST` requests and reject a mismatched `Origin` header.
+
+## SAT>IP tuning and DIGIBIT compatibility
+
+The DIGIBIT may return RTSP `200 OK` even when an incomplete satellite query will not produce an RTP stream. SORALink therefore sends the complete tuning parameter set whenever it is available:
+
+```text
+src, freq, pol, ro, msys, mtype, plts, sr, fec, pids
+```
+
+Example:
+
+```text
+?src=1&freq=11361.8&pol=h&ro=0.35&msys=dvbs2&mtype=8psk&plts=on&sr=22000&fec=23&pids=0,17,21
+```
+
+### DIGIBIT PID compatibility
+
+The native library used by the working Android application applies a DIGIBIT workaround: a PID request containing only values up to `20` is extended with PID `21`.
+
+SORALink follows the same rule:
+
+```text
+pids=0,17  →  pids=0,17,21
+pids=18    →  pids=18,21
+```
+
+The scanner also avoids `pids=all` because affected DIGIBIT firmware may return only PID `0`. It requests PAT/SDT first, reads PMT PIDs from the PAT, and requests those PMTs explicitly in bounded batches.
+
+## SAT>IP channel scan
+
+The SAT>IP scan is performed locally by SORALink; it is not a proprietary DIGIBIT scan command and it is not a blind RF scan.
+
+For each transponder, SORALink:
+
+1. Opens an RTSP/RTP session with the full DVB tuning parameters.
+2. Requests PAT and SDT using `pids=0,17,21`.
+3. Reads service IDs and PMT PIDs from the PAT.
+4. Requests PMTs explicitly in DIGIBIT-compatible batches.
+5. Parses PMT stream/PCR/CA PIDs and SDT service names/types.
+6. Merges duplicate services.
+7. Atomically replaces `channels.xml`.
+8. Reloads the M3U playlists immediately.
+
+### Astra 19.2°E preset
+
+The bundled fallback contains 55 unique full-parameter transponders. Select it with:
+
+```ini
+satellite_preset=astra-19.2e
+transponder_table=transponders.conf
+device_scan_mode=110
+```
+
+When an older external Astra section contains only frequency, polarization, and symbol rate, SORALink uses the bundled full-parameter table instead.
+
+### Custom transponder table
+
+```ini
+[astra-19.2e]
+11347.0,V,22000,dvbs2,8psk,0.35,on,23
+11361.8,H,22000,dvbs2,8psk,0.35,on,23
+11739.0,V,27500,dvbs,qpsk,0.35,on,34
+```
+
+Fields:
+
+```text
+frequency,polarization,symbol_rate,msys,mtype,rolloff,pilot,fec
+```
+
+The old three-field format remains accepted for custom presets, but complete entries are strongly recommended.
+
+`timeout_ms` controls the initial RTP/MPEG-TS acquisition time and is clamped to 2–15 seconds in the SAT>IP lock path. `wait_ms` controls DVB table collection after lock and is clamped to 1800–8000 ms for channel scans.
 
 ## Channel XML
 
 The server reads `<ch ...>` elements. Elements may span lines, and attributes may use single or double quotes.
 
+SAT>IP-generated example:
+
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
-<channels>
-  <ch
-    type="TV"
-    pol="H"
-    sym="22000"
-    s_id="10301"
-    freq="11494"
-    lcn="1"
-    fta="1"
-    prog_idx="1085734912"
-    ts_id="1011"
-    epg_id="example.tv"
-    s_name="Example TV" />
+<ch_List>
+  <ch type="TV" pol="H" sym="22000"
+      s_id="11110" ts_id="1079" freq="11361.8"
+      lcn="1" s_name="ZDF HD" fta="1"
+      epg_id="1.1079.11110"
+      msys="dvbs2" mtype="8psk" ro="0.35"
+      plts="on" fec="23"
+      pids="0,1,17,18,20,6100,6110,6120" />
+</ch_List>
+```
 
-  <ch type='radio' pol='V' sym='27500' s_id='10402'
-      freq='11538' lcn='101' fta='1'
-      xmltv_id='example.radio'
-      s_name='Example Radio &#9733;' />
-</channels>
+Legacy example:
+
+```xml
+<ch type="TV" pol="H" sym="22000" s_id="10301"
+    freq="11494" lcn="1" fta="1"
+    prog_idx="1085734912" ts_id="1011"
+    epg_id="example.tv" s_name="Example TV" />
 ```
 
 ### Attributes
@@ -304,198 +531,141 @@ The server reads `<ch ...>` elements. Elements may span lines, and attributes ma
 | Attribute | Required | Description |
 |---|---:|---|
 | `type` | Yes | `TV` or `RADIO`; normalized to uppercase |
-| `pol` | Yes | `H`, `V`, `F`, or `O`; `F` and `O` are receiver-specific voltage modes |
+| `pol` | Yes | `H`, `V`, `F`, or `O`; `F` and `O` are legacy receiver-specific modes |
 | `sym` | Yes | Symbol rate in kSym/s |
 | `s_id` | Yes | DVB service ID |
-| `freq` | Yes | Transponder frequency in MHz |
+| `freq` | Yes | Transponder frequency in MHz; decimal SAT>IP values are supported |
 | `lcn` | Yes | Unique logical channel number used in playlists and URLs |
 | `s_name` | Yes | Display name shown in VLC and the dashboard |
-| `fta` | No | Free-to-air flag; `0` is false and any non-zero value is true |
-| `epg_id` | No | XMLTV channel ID; defaults to decimal `lcn` |
+| `fta` | No | Free-to-air flag; `0` is false and non-zero is true |
+| `epg_id` | No | XMLTV channel ID; SAT>IP scans use `onid.tsid.sid` |
 | `xmltv_id` | No | Alias for `epg_id` |
-| `prog_idx` | No | Saved receiver programme index used by native EPG retrieval |
+| `prog_idx` | Legacy only | Saved receiver programme index used by legacy tuning/EPG retrieval |
 | `ts_id` | No | DVB transport-stream ID |
+| `msys` | SAT>IP | `dvbs`, `dvbs2`, or `auto` |
+| `mtype` | SAT>IP | `qpsk`, `8psk`, `16apsk`, or `32apsk` |
+| `ro` | SAT>IP | Roll-off, normally `0.20`, `0.25`, or `0.35` |
+| `plts` | SAT>IP | Pilot mode: `on`, `off`, or `auto` |
+| `fec` | SAT>IP | SAT>IP FEC code such as `23`, `34`, `56`, `78`, or `910` |
+| `pids` | SAT>IP | Comma-separated MPEG-TS PID filter or `all` |
 
 Duplicate `lcn` values are skipped with a warning.
 
-The parser decodes `&amp;`, `&apos;`, `&quot;`, `&lt;`, `&gt;`, decimal numeric entities, and hexadecimal numeric entities.
-
-The channel parser is intentionally lightweight:
-
-- Attribute names must match the documented names.
-- Malformed entries are skipped.
-- A single tag is limited to 64 KiB.
-- The complete XML file is limited to 64 MiB.
-- Frequency and symbol-rate values must fit the receiver protocol fields.
+The parser decodes standard XML entities and decimal/hexadecimal numeric entities. Malformed entries are skipped, a single tag is limited to 64 KiB, and the complete file is limited to 64 MiB.
 
 ## Programme guide and XMLTV
 
-SORALink uses XMLTV for dashboard now/next information and per-channel schedules.
+SORALink uses XMLTV for dashboard now/next information and per-channel schedules. The default path is `epg.xml` beside the executable. A missing EPG file is non-fatal.
 
-The default path is `epg.xml` beside the executable. A missing EPG file is non-fatal; the server starts with an empty guide.
+There are three EPG sources:
 
-```bash
-./soralink \
-  --device soralink.local \
-  --server \
-  --channels channels.xml \
-  --epg guide.xml
+1. A local XMLTV file.
+2. An optional HTTP/HTTPS XMLTV download.
+3. Native receiver EPG:
+   - WISI/S2D proprietary EPG cache
+   - SAT>IP DVB EIT collection
+
+### Native SAT>IP EPG
+
+SORALink groups scanned channels by transponder, tunes each unique multiplex once, and requests:
+
+```text
+pids=18,21
 ```
 
-Each channel's `epg_id` or `xmltv_id` must match the XMLTV `<channel id="...">` and `<programme channel="...">` values. Without either attribute, the decimal `lcn` is used.
+PID `18` carries DVB EIT. PID `21` is the DIGIBIT compatibility PID used by the working Android library.
 
-The parser reads programme start/stop timestamps and these common elements:
+The collector parses:
 
-- `title`
-- `sub-title`
-- `desc`
-- `category`
+- `0x4E–0x4F`: present/following events
+- `0x50–0x5F`: schedule for the current transport stream
+- `0x60–0x6F`: schedule for other transport streams
+- Short-event descriptors for title and summary
+- Extended-event descriptors for longer descriptions
+- Content descriptors for categories
 
-### Download XMLTV at startup
+Events are matched through the generated channel identity:
 
-```bash
-./soralink \
-  --device soralink.local \
-  --server \
-  --channels channels.xml \
-  --epg epg.xml \
-  --epg-update \
-  --epg-url https://example.test/guide.xml
+```text
+original_network_id.transport_stream_id.service_id
 ```
 
-Important behaviour:
+Enable native SAT>IP EPG:
 
-- `--epg-update` requires `--epg-url`.
+```ini
+device_epg_update=true
+device_epg_refresh_minutes=240
+device_scan_epg_after=true
+```
+
+Use **Update EPG now** in `/admin/` for a manual refresh. `wait_ms` is clamped to 5000–30000 ms per transponder for EPG collection. Larger values can capture more schedule sections but increase the total refresh time.
+
+Existing future XMLTV entries are retained, and matching broadcast events are updated.
+
+### External XMLTV download
+
+```ini
+epg=epg.xml
+epg_update=true
+epg_url=https://example.test/guide.xml
+epg_update_timeout_ms=30000
+```
+
+Important behavior:
+
+- `epg_update=true` requires `epg_url`.
 - Plain HTTP works in the normal build.
 - HTTPS requires an OpenSSL build.
-- HTTPS verifies the server certificate and hostname using the system/OpenSSL trust store.
+- HTTPS verifies the certificate and hostname.
 - TLS 1.2 or newer is required.
 - Normal and chunked HTTP response bodies are supported.
 - Up to five redirects are followed.
-- Absolute redirects are supported; arbitrary relative redirect paths are not.
-- Compressed response bodies are rejected; use an uncompressed XML URL.
-- A failed startup download leaves the existing local file available for loading.
-- `--epg-update-timeout-ms` accepts `1000` to `120000`; default: `30000`.
+- Compressed response bodies are rejected.
+- A failed startup download leaves the existing local XMLTV file available.
+
+External XMLTV channel IDs must match each channel's `epg_id` or `xmltv_id`.
 
 ## Administration dashboard
 
-The dashboard serves static files from `web/` by default and provides:
+The dashboard serves static files from `web/` and provides:
 
-- Current channel and stream throughput
+- Current backend, channel, and stream throughput
 - Connected viewers and connection durations
 - Individual or all-viewer disconnection
 - TV/radio channel browsing and stream links
 - Now/next information and channel schedules
 - Channel-list and EPG reload controls
-- Native lineup and EPG refresh
-- Scan start, cancellation, progress, and result counts
+- Backend-aware lineup and EPG maintenance controls
+- SAT>IP scan start, cancellation, progress, and result counts
 - Live server, scan, and satellite settings
 - Optional persistence of supported settings to the active config file
 
 ### Dashboard credentials
 
-Configure a dedicated administrator pair:
-
-```bash
-./soralink \
-  --device soralink.local \
-  --server \
-  --admin-user admin \
-  --admin-password 'change-this-password'
+```ini
+admin_user=admin
+admin_password=replace-this-admin-password
 ```
 
-Both administrator options must be present together. When they are omitted, the dashboard falls back to the viewer credentials.
+Both administrator options must be present together. Without a dedicated administrator pair, the dashboard uses viewer credentials when configured.
 
-For safety, SORALink refuses to expose an enabled dashboard on a non-loopback listener unless either administrator or viewer credentials are configured.
+SORALink refuses to expose an enabled dashboard on a non-loopback listener unless administrator or viewer credentials are configured.
 
-## Receiver lineup, EPG, and scans
+## Receiver maintenance by backend
 
-Native maintenance commands are receiver- and firmware-specific. Run them only while no viewers are connected.
+| Action | WISI/S2D legacy | SAT>IP / DIGIBIT |
+|---|---|---|
+| `device_channels_update` | Downloads proprietary receiver lineup | Disabled; use software scan |
+| `device_epg_update` | Downloads proprietary receiver EPG cache | Collects DVB EIT and writes XMLTV |
+| `device_scan_mode=110` | Full software preset sweep when available | Full software preset sweep |
+| `device_scan_mode=0` | Receiver automatic/compatibility scan | SAT>IP still requires a transponder preset |
+| `device_scan_epg_after` | Refreshes legacy EPG after scan | Collects DVB EIT after scan |
 
-### Startup refresh
-
-```bash
-./soralink \
-  --device soralink.local \
-  --server \
-  --device-channels-update \
-  --device-epg-update
-```
-
-`--device-update-on-start` is enabled by default.
-
-Channel startup behaviour:
-
-- When the local channel file loads, a failed native refresh produces a warning and preserves the local lineup.
-- When the local channel file is missing, enabled startup channel refresh can create the lineup.
-- If neither source succeeds, server startup fails.
-
-EPG startup behaviour:
-
-- A failed native EPG refresh produces a warning.
-- The already loaded local XMLTV data remains available.
-
-Disable startup maintenance while retaining manual and scheduled controls:
-
-```bash
-./soralink --config soralink.conf --no-device-update-on-start
-```
-
-### Periodic maintenance
-
-```bash
-./soralink \
-  --device soralink.local \
-  --server \
-  --device-channels-update \
-  --device-epg-update \
-  --device-channels-refresh-minutes 1440 \
-  --device-epg-refresh-minutes 240
-```
-
-An interval of `0` disables that periodic task. Channel and EPG refreshes also require their corresponding update feature to be enabled.
-
-Default intervals:
-
-| Task | Default |
-|---|---:|
-| Channel refresh | `1440` minutes |
-| EPG refresh | `240` minutes |
-| Scheduled scan | Disabled (`0`) |
-
-### Receiver scans
-
-Manual scans are available from the dashboard. Scheduled scans use a non-zero interval:
-
-```bash
-./soralink \
-  --device soralink.local \
-  --server \
-  --device-scan-refresh-minutes 10080 \
-  --device-scan-timeout-minutes 45 \
-  --device-scan-mode 110 \
-  --device-scan-search-range 0 \
-  --device-scan-order-by 0 \
-  --device-scan-sort-mode 0 \
-  --device-scan-network \
-  --device-scan-epg-after
-```
-
-Scan modes:
-
-| Value | Behaviour |
-|---:|---|
-| `110` | Default full mode. At `19.2°E`, runs the built-in 88-transponder Astra software sweep; elsewhere starts the receiver automatic scan. |
-| `0` | Compatibility mode using the receiver automatic scan path without the Astra software sweep. |
-| `126` | Accepted as a legacy alias and normalized to `110`. |
-
-By default, scans use the satellite/LNB profile already stored in the receiver. Add `--device-scan-apply-satellite` to apply SORALink's configured orbital, LNB, tone, and DiSEqC values before scanning.
-
-After a successful scan, SORALink downloads and installs the refreshed lineup. Native EPG refresh after scanning is enabled by default.
+All maintenance requires no connected viewers.
 
 ## Configuration file
 
-Load settings from a `key=value` file:
+SORALink automatically loads `soralink.conf` beside the executable when present. An explicit file can be selected with:
 
 ```bash
 ./soralink --config soralink.conf
@@ -503,109 +673,39 @@ Load settings from a `key=value` file:
 
 The configuration file is loaded first. Command-line options are then applied and take precedence.
 
-```ini
-# Receiver and server
-device=soralink.local
-control_port=8802
-stream_port=8800
-server=true
-channels=channels.xml
-http_bind=127.0.0.1
-http_port=8080
-max_clients=8
-
-# Dashboard and authentication
-webui=true
-web_root=web
-http_user=vlc
-http_password=replace-this-viewer-password
-admin_user=admin
-admin_password=replace-this-admin-password
-
-# XMLTV
-epg=epg.xml
-epg_update=false
-epg_url=https://example.test/guide.xml
-epg_update_timeout_ms=30000
-
-# Native receiver maintenance
-device_channels_update=false
-device_epg_update=false
-device_update_on_start=true
-device_channels_refresh_minutes=1440
-device_epg_refresh_minutes=240
-
-# Receiver scanning
-device_scan_refresh_minutes=0
-device_scan_timeout_minutes=45
-device_scan_mode=110
-device_scan_search_range=0
-device_scan_order_by=0
-device_scan_sort_mode=0
-device_scan_network=true
-device_scan_epg_after=true
-device_scan_apply_satellite=false
-
-# Satellite/LNB profile
-orbital=192
-west=false
-tone=auto
-lnb_low=9750
-lnb_high=10600
-lnb_switch=11700
-diseqc=0
-sat_setup=false
-
-# Stream processing
-wait_ms=800
-timeout_ms=3000
-missing_key=pass
-```
-
 Configuration rules:
 
 - Empty lines are ignored.
 - Lines beginning with `#` or `;` are comments.
-- Lines beginning with `[` are ignored, allowing visual INI-style sections.
+- Lines beginning with `[` are ignored, allowing INI-style section headers.
 - Keys are case-normalized.
-- Hyphens in keys are treated as underscores.
+- Hyphens and underscores in keys are treated the same.
 - Values may be wrapped in matching single or double quotes.
 - Unknown or invalid settings stop startup.
 - Credentials are stored as plaintext; protect the file with filesystem permissions.
-- Dashboard persistence is available only when SORALink was started with `--config`.
-
-The dashboard can persist these live settings:
-
-- Viewer limit and stream timeouts
-- Missing-key policy
-- Native update enables and intervals
-- Scan interval, timeout, mode, range, ordering, sorting, network, EPG-after, and satellite-profile controls
-- Orbital direction and position
-- Tone, LNB, and DiSEqC values
-- Startup maintenance enable
+- Dashboard persistence is available only when a configuration file is active.
 
 ## Single-channel UDP mode
 
 UDP mode forwards MPEG-TS to `127.0.0.1:1234` by default.
 
-Open this network URL in VLC first:
+Open this URL in VLC first:
 
 ```text
 udp://@:1234
 ```
 
-### Tune a saved programme
+### WISI/S2D saved programme
 
 ```bash
-./soralink \
-  --device soralink.local \
-  --progidx 0
+./soralink --device-type legacy --device soralink.local --progidx 0
 ```
 
-### Tune a DVB-S service directly
+### Direct DVB-S tuning
 
 ```bash
 ./soralink \
+  --device-type legacy \
   --device soralink.local \
   --freq 11494 \
   --sr 22000 \
@@ -614,9 +714,7 @@ udp://@:1234
   --orbital 192
 ```
 
-Direct tuning requires all four of `--freq`, `--sr`, `--pol`, and `--sid`.
-
-`--orbital 192` means `19.2°`. East is the default; add `--west` for a western orbital position.
+SAT>IP does not support `--progidx`. Use direct DVB parameters or, preferably, server mode with scanned channel metadata so full modulation/FEC/roll-off/pilot values are available.
 
 ### Forward to another host
 
@@ -628,37 +726,25 @@ Direct tuning requires all four of `--freq`, `--sr`, `--pol`, and `--sid`.
   --vlc-port 1234
 ```
 
-The destination can be a DNS name, IPv4 address, or IPv6 address and must accept incoming UDP traffic.
-
 ### Record the processed stream
 
 ```bash
-./soralink \
-  --device soralink.local \
-  --progidx 0 \
-  --dump recording.ts
+./soralink --device soralink.local --progidx 0 --dump recording.ts
 ```
-
-The dump contains the same processed MPEG-TS packets sent to VLC.
 
 ## Stream keys and encrypted packets
 
-SORALink enables a legacy built-in even AES-128 key by default. It can be replaced, supplemented with an odd key, or disabled.
+This section applies to the WISI/S2D legacy backend. SAT>IP mode disables the legacy AES key path.
 
-Keys must contain exactly 16 bytes. Plain hexadecimal and separators such as colons, hyphens, spaces, and tabs are accepted.
+SORALink enables a legacy built-in even AES-128 key by default. It can be replaced, supplemented with an odd key, or disabled.
 
 ```bash
 ./soralink \
+  --device-type legacy \
   --device soralink.local \
   --progidx 0 \
   --even-key 00112233445566778899aabbccddeeff \
   --odd-key 00:11:22:33:44:55:66:77:88:99:aa:bb:cc:dd:ee:ff
-```
-
-Disable the built-in even key:
-
-```bash
-./soralink --device soralink.local --progidx 0 --no-default-key
 ```
 
 Missing-key policy:
@@ -672,10 +758,15 @@ Use keys only with hardware, services, and content that you are authorized to ac
 
 ## Satellite and LNB settings
 
-Normal tuning skips the extended LNB/DiSEqC setup sequence by default. Enable it when the receiver must be configured explicitly:
+The `orbital`, `tone`, `lnb_*`, `diseqc`, and `sat_setup` options configure the proprietary WISI/S2D satellite setup sequence.
+
+For SAT>IP, the SAT>IP server controls the LNB. Use `satip_source` to select the configured satellite source/DiSEqC position.
+
+Legacy example:
 
 ```bash
 ./soralink \
+  --device-type legacy \
   --device soralink.local \
   --server \
   --channels channels.xml \
@@ -686,20 +777,6 @@ Normal tuning skips the extended LNB/DiSEqC setup sequence by default. Enable it
   --diseqc 1
 ```
 
-Defaults:
-
-| Setting | Default |
-|---|---:|
-| Orbital position | `19.2°E` (`192`) |
-| Low LNB oscillator | `9750 MHz` |
-| High LNB oscillator | `10600 MHz` |
-| LNB switch frequency | `11700 MHz` |
-| DiSEqC input | `0` (none) |
-| 22 kHz tone | `auto` |
-| Extended satellite setup | Disabled |
-
-With `--tone auto`, the tone is selected from the tuned frequency and configured switch frequency.
-
 ## Network access and security
 
 The server listens on `127.0.0.1` by default.
@@ -708,7 +785,8 @@ To expose it on a trusted local network:
 
 ```bash
 ./soralink \
-  --device soralink.local \
+  --device-type satip \
+  --device 192.168.0.130 \
   --server \
   --channels channels.xml \
   --http-bind 0.0.0.0 \
@@ -718,33 +796,8 @@ To expose it on a trusted local network:
   --admin-password 'change-this-admin-password'
 ```
 
-Open the playlist using the SORALink host's LAN address:
-
-```text
-http://192.168.1.20:8080/playlist.m3u
-```
-
-The listener can also bind to a hostname or IPv6 address. `*` requests a wildcard listener through the platform resolver.
-
-### Viewer authentication
-
-Both options are required together:
-
-```bash
---http-user vlc --http-password 'change-this-viewer-password'
-```
-
-Viewer authentication protects playlists, status, and channel streams.
-
-### Administrator authentication
-
-Both options are required together:
-
-```bash
---admin-user admin --admin-password 'change-this-admin-password'
-```
-
-Without a dedicated administrator pair, the dashboard uses the viewer credentials.
+> [!WARNING]
+> Plain HTTP does not encrypt credentials, configuration data, viewer addresses, channel activity, or stream content. Use TLS, a trusted TLS reverse proxy, and firewall rules when traffic crosses an untrusted network.
 
 ### HTTPS
 
@@ -752,22 +805,16 @@ TLS requires an OpenSSL build and both PEM files:
 
 ```bash
 ./soralink \
-  --device soralink.local \
+  --device-type satip \
+  --device 192.168.0.130 \
   --server \
   --channels channels.xml \
   --http-bind 0.0.0.0 \
-  --http-user vlc \
-  --http-password 'change-this-viewer-password' \
   --admin-user admin \
   --admin-password 'change-this-admin-password' \
   --tls-cert server-chain.pem \
   --tls-key server-key.pem
 ```
-
-The native server enforces TLS 1.2 or newer, disables TLS compression, loads a certificate chain, and verifies that the private key matches.
-
-> [!WARNING]
-> HTTP Basic authentication does not encrypt credentials. Exposing the server beyond loopback can reveal credentials, viewer addresses, configuration details, channel activity, and stream content. Use TLS, a trusted TLS reverse proxy, and firewall rules.
 
 ## Status APIs
 
@@ -782,26 +829,21 @@ Idle response:
 }
 ```
 
-While streaming, it also includes:
-
-- Logical channel number and name
-- Frequency, symbol rate, polarization, and service ID
-- Even/odd decrypted packet counters
-- Missing even/odd key counters
+While streaming, it includes the active channel and client count. Backend-specific data includes SAT>IP settings or legacy AES counters as appropriate.
 
 ### `/admin/api/status`
 
 The authenticated dashboard API includes:
 
 - Server time and uptime
+- Selected backend and control settings
 - Current transfer rate and total bytes
 - Current channel
-- Every configured channel with stream URL and now/next data
+- Configured channels with stream URLs and now/next data
 - Viewer IDs, addresses, ports, and connection durations
-- Active paths and selected settings
 - XMLTV load state
-- Native update state
-- Scan state, progress, frequency, mode, and result counts
+- Native maintenance state
+- Scan state, preset, progress, frequency, mode, and result counts
 
 ### `/admin/api/epg/<lcn>`
 
@@ -809,14 +851,17 @@ Returns up to 100 programmes around the current time for one channel.
 
 ## Command-line reference
 
-### Configuration and receiver
+### Backend and receiver
 
 | Option | Description | Default |
 |---|---|---|
-| `--config FILE` | Load `key=value` settings before command-line overrides | Off |
-| `--device HOST` | Receiver DNS name, IPv4 address, or IPv6 address; required except for `--self-test` | — |
-| `--control-port N` | Receiver TCP control port | `8802` |
-| `--stream-port N` | Receiver UDP stream port | `8800` |
+| `--config FILE` | Load settings before command-line overrides | Auto-load `soralink.conf` beside executable |
+| `--device HOST` | Receiver DNS name, IPv4 address, or IPv6 address | Required except for `--self-test` |
+| `--device-type legacy\|satip` | Select WISI/S2D or SAT>IP backend; `digibit` is accepted | `legacy` |
+| `--control-port N` | Legacy control or SAT>IP RTSP port | `8802`; becomes `554` for SAT>IP unless explicitly set |
+| `--stream-port N` | Legacy UDP stream port | `8800` |
+| `--satip-source N` | SAT>IP source/DiSEqC position, `1..255` | `1` |
+| `--satip-msys auto\|dvbs\|dvbs2` | Fallback delivery system when channel metadata is incomplete | `auto` |
 
 ### HTTP, dashboard, and XMLTV
 
@@ -826,203 +871,176 @@ Returns up to 100 programmes around the current time for one channel.
 | `--channels FILE` | Channel XML file | `channels.xml` |
 | `--http-bind HOST` | Listen address or hostname | `127.0.0.1` |
 | `--http-port N` | HTTP listen port | `8080` |
-| `--max-clients N` | Simultaneous viewers of one channel; `1` to `64` | `8` |
-| `--http-user USER` | Viewer HTTP Basic username; requires password | Off |
-| `--http-password PASS` | Viewer HTTP Basic password; requires username | Off |
-| `--admin-user USER` | Administrator username; requires password | Viewer credentials |
-| `--admin-password PASS` | Administrator password; requires username | Viewer credentials |
-| `--webui` | Enable the administration dashboard | Enabled |
-| `--no-webui` | Disable the administration dashboard | Off |
+| `--max-clients N` | Simultaneous viewers of one channel; `1..64` | `8` |
+| `--http-user USER` | Viewer username; requires password | Off |
+| `--http-password PASS` | Viewer password; requires username | Off |
+| `--admin-user USER` | Dashboard administrator username | Viewer credentials or off |
+| `--admin-password PASS` | Dashboard administrator password | Viewer credentials or off |
+| `--webui` / `--no-webui` | Enable or disable dashboard | Enabled |
 | `--web-root DIR` | Dashboard assets directory | `web` beside executable |
-| `--epg FILE` | XMLTV file; an empty config value disables it | `epg.xml` beside executable |
-| `--epg-update` | Download XMLTV before server startup and full/EPG reloads | Off |
-| `--no-epg-update` | Disable XMLTV download | Enabled |
-| `--epg-url URL` | HTTP/HTTPS source for `--epg-update` | — |
-| `--epg-update-timeout-ms N` | XMLTV download timeout; `1000` to `120000` ms | `30000` |
-| `--tls-cert FILE` | TLS certificate chain PEM; requires `--tls-key` and OpenSSL | Off |
-| `--tls-key FILE` | TLS private-key PEM; requires `--tls-cert` and OpenSSL | Off |
+| `--epg FILE` | XMLTV file; empty config value disables it | `epg.xml` beside executable |
+| `--epg-update` / `--no-epg-update` | Download external XMLTV at startup | Off |
+| `--epg-url URL` | HTTP/HTTPS source for external XMLTV | — |
+| `--epg-update-timeout-ms N` | External XMLTV timeout, `1000..120000` ms | `30000` |
+| `--tls-cert FILE` | TLS certificate chain PEM | Off |
+| `--tls-key FILE` | TLS private-key PEM | Off |
 
 ### Native maintenance and scans
 
 | Option | Description | Default |
 |---|---|---|
-| `--device-channels-update` | Enable native lineup refresh | Off |
-| `--no-device-channels-update` | Disable native lineup refresh | Enabled |
-| `--device-epg-update` | Enable native EPG refresh | Off |
-| `--no-device-epg-update` | Disable native EPG refresh | Enabled |
-| `--device-channels-refresh-minutes N` | Lineup refresh interval; `0` disables; maximum `10080` | `1440` |
-| `--device-epg-refresh-minutes N` | EPG refresh interval; `0` disables; maximum `10080` | `240` |
-| `--device-scan-refresh-minutes N` | Scan interval; `0` disables; maximum `10080` | `0` |
-| `--device-scan-timeout-minutes N` | Scan timeout; `1` to `120` minutes | `45` |
-| `--device-scan-mode N` | `110` full/default, `0` compatibility; `126` legacy alias for `110` | `110` |
-| `--device-scan-search-range N` | Receiver-specific scan range code; `0` to `7` | `0` |
-| `--device-scan-order-by N` | Receiver-specific ordering code; `0` to `3` | `0` |
-| `--device-scan-sort-mode N` | Receiver-specific sorting code; `0` to `3` | `0` |
-| `--device-scan-network` | Enable network scanning | Enabled |
-| `--no-device-scan-network` | Disable network scanning | Off |
-| `--device-scan-epg-after` | Refresh native EPG after a completed scan | Enabled |
-| `--no-device-scan-epg-after` | Skip EPG refresh after a scan | Off |
-| `--device-scan-apply-satellite` | Apply configured satellite/LNB/DiSEqC profile before scanning | Off |
-| `--no-device-scan-apply-satellite` | Use the receiver's stored satellite profile | Enabled |
+| `--device-channels-update` | Enable proprietary legacy lineup refresh; disabled in SAT>IP mode | Off |
+| `--device-epg-update` | Enable legacy EPG-cache refresh or SAT>IP DVB EIT collection | Off |
+| `--device-channels-refresh-minutes N` | Lineup refresh interval; `0` disables | `1440` |
+| `--device-epg-refresh-minutes N` | EPG refresh interval; `0` disables | `240` |
+| `--device-scan-refresh-minutes N` | Scan interval; `0` disables | `0` |
+| `--device-scan-timeout-minutes N` | Overall scan timeout, `1..120` minutes | `45` |
+| `--device-scan-mode N` | `110` full preset sweep, `0` compatibility; `126` alias for `110` | `110` |
+| `--satellite-preset KEY` | Preset section used by software scan | `custom` |
+| `--transponder-table FILE` | Preset file | `transponders.conf` beside executable |
+| `--device-scan-search-range N` | Legacy receiver scan range code, `0..7` | `0` |
+| `--device-scan-order-by N` | Legacy receiver ordering code, `0..3` | `0` |
+| `--device-scan-sort-mode N` | Legacy receiver sorting code, `0..3` | `0` |
+| `--device-scan-network` | Enable legacy network scan flag | Enabled |
+| `--device-scan-epg-after` | Refresh/collect native EPG after scan | Enabled |
+| `--device-scan-apply-satellite` | Apply configured legacy LNB/DiSEqC profile before scan | Off |
 | `--device-update-on-start` | Run enabled native updates during startup | Enabled |
-| `--no-device-update-on-start` | Skip enabled native updates during startup | Off |
+
+Each boolean option also has a corresponding `--no-...` form where shown in `--help`.
 
 ### Tuning and satellite
 
 | Option | Description | Default |
 |---|---|---|
-| `--progidx N` | Tune saved programme index `N` | — |
+| `--progidx N` | Tune legacy saved programme index | — |
 | `--freq MHz` | Transponder frequency in MHz | — |
 | `--sr N` | Symbol rate in kSym/s | — |
-| `--pol H\|V\|F\|O` | Polarization or receiver-specific voltage mode | — |
+| `--pol H\|V\|F\|O` | Polarization or legacy voltage mode | — |
 | `--sid N` | DVB service ID | — |
-| `--orbital N` | Orbital position in tenths of a degree | `192` |
-| `--east` | Use an eastern orbital position | Enabled |
-| `--west` | Use a western orbital position | Off |
-| `--tone auto\|on\|off` | 22 kHz tone mode | `auto` |
-| `--lnb-low N` | Low-band LNB local oscillator in MHz; maximum `65535` | `9750` |
-| `--lnb-high N` | High-band LNB local oscillator in MHz; maximum `65535` | `10600` |
-| `--lnb-switch N` | LNB switch frequency in MHz; maximum `65535` | `11700` |
-| `--diseqc N` | DiSEqC input value; `0` to `255` | `0` |
-| `--sat-setup` | Send the extended LNB/DiSEqC setup sequence | Off |
-| `--no-sat-setup` | Skip the extended setup sequence | Enabled |
+| `--orbital N` | Legacy orbital position in tenths of a degree | `192` |
+| `--east` / `--west` | Legacy orbital direction | East |
+| `--tone auto\|on\|off` | Legacy 22 kHz tone mode | `auto` |
+| `--lnb-low N` | Legacy low-band LNB LO | `9750` |
+| `--lnb-high N` | Legacy high-band LNB LO | `10600` |
+| `--lnb-switch N` | Legacy LNB switch frequency | `11700` |
+| `--diseqc N` | Legacy DiSEqC input | `0` |
+| `--sat-setup` / `--no-sat-setup` | Enable/disable extended legacy setup | Disabled |
 
 ### Stream processing and UDP output
 
 | Option | Description | Default |
 |---|---|---|
-| `--even-key HEX` | Set the 16-byte even AES key | Legacy built-in key |
-| `--odd-key HEX` | Set the 16-byte odd AES key | Unset |
-| `--no-default-key` | Disable the legacy built-in even key | Off |
-| `--missing-key pass\|drop` | Forward or discard packets without a matching key | `pass` |
-| `--vlc-ip HOST` | UDP destination DNS name, IPv4 address, or IPv6 address | `127.0.0.1` |
+| `--even-key HEX` | Set legacy 16-byte even AES key | Built-in legacy key |
+| `--odd-key HEX` | Set legacy 16-byte odd AES key | Unset |
+| `--no-default-key` | Disable built-in legacy even key | Off |
+| `--missing-key pass\|drop` | Forward or discard unmatched encrypted packets | `pass` |
+| `--vlc-ip HOST` | UDP destination | `127.0.0.1` |
 | `--vlc-port N` | UDP destination port | `1234` |
-| `--dump FILE.ts` | Also write the processed stream to a file in UDP mode | Off |
-| `--wait-ms N` | Delay after tuning; `0` to `60000` ms | `800` |
-| `--timeout-ms N` | Network timeout; `100` to `60000` ms | `3000` |
+| `--dump FILE.ts` | Save processed UDP-mode stream | Off |
+| `--wait-ms N` | Post-tune/table collection duration | `800` |
+| `--timeout-ms N` | Network/initial SAT>IP lock timeout | `3000` |
 
 ### Diagnostics
 
-| Option | Description | Default |
-|---|---|---|
-| `--probe` | Test only the receiver permission handshake | Off |
-| `--self-test` | Run internal tests without connecting to a receiver | Off |
-| `--verbose` | Print protocol frames and diagnostics | Off |
-| `--help`, `-h` | Show built-in help | — |
+| Option | Description |
+|---|---|
+| `--probe` | Test receiver reachability without streaming |
+| `--self-test` | Run internal tests without a receiver |
+| `--verbose` | Print protocol frames and diagnostics |
+| `--help`, `-h` | Show built-in help |
 
 ## Recovery behaviour
 
-SORALink sends a control heartbeat approximately every five seconds.
+### WISI/S2D
 
-If the control connection fails or the MPEG-TS transport repeatedly times out, SORALink attempts to:
+SORALink sends a control heartbeat approximately every five seconds. On failure it attempts to reconnect, reacquire permission, reapply satellite setup when enabled, and retune the active channel.
 
-1. Reconnect to the receiver.
-2. Reacquire the exclusive permission session.
-3. Reapply satellite setup when enabled.
-4. Retune the active channel.
+### SAT>IP
 
-Native EPG retrieval and scan polling also attempt to restore control sessions when required. A failed recovery ends the affected run or disconnects affected viewers rather than continuing with an unknown receiver state.
+SORALink opens a new RTSP/RTP session for tuning, applies the complete saved channel parameters, waits for a valid MPEG-TS packet, and tears the session down when finished. The HTTP path retries after stream stalls. Maintenance sessions are also closed before the next transponder is attempted.
 
 ## Troubleshooting
 
-### Control port is unreachable
+### SAT>IP server is reachable, but no channels are found
+
+Run with:
+
+```ini
+wait_ms=5000
+timeout_ms=8000
+verbose=true
+```
+
+Confirm the `SETUP` query contains the full parameter set and the scan PID workaround:
+
+```text
+ro=...&msys=...&mtype=...&plts=...&sr=...&fec=...&pids=0,17,21
+```
+
+Also verify:
+
+- `satip_source` selects the source used by the working SAT>IP application.
+- No other client occupies the DIGIBIT tuners.
+- Windows Firewall allows `soralink.exe` to receive UDP traffic.
+- The correct full-parameter transponder table is installed.
+- The dish/LNB path can tune the same service in another SAT>IP application.
+
+### Only a few SAT>IP transponders lock
+
+- Confirm the log shows the expected DVB-S/DVB-S2 mode, modulation, roll-off, pilot, and FEC.
+- Replace old three-column Astra data with the bundled `transponders.conf`.
+- Increase `timeout_ms` up to `8000` or `12000` on slow tuner changes.
+- Power-cycle the DIGIBIT after interrupted tests if old sessions appear stuck.
+
+### SAT>IP EPG is empty
+
+- Complete a channel scan first; native EPG requires generated `epg_id=onid.tsid.sid` identities.
+- Enable `device_epg_update=true`.
+- Disconnect viewers before updating.
+- Confirm the log contains a request with `pids=18,21`.
+- Increase `wait_ms`; EPG collection uses at least 5000 ms per transponder.
+- Some broadcasters transmit only limited present/following data or incomplete schedules.
+
+### WISI/S2D control port is unreachable
 
 - Confirm the receiver hostname or IP address.
-- Confirm `--control-port` when it does not use TCP `8802`.
-- Verify network reachability and firewall rules.
+- Confirm TCP port `8802` or the configured alternative.
 - Fully close the official receiver application and other clients.
-- When a hostname resolves to several addresses, test a literal working address.
+- Verify network and firewall rules.
 
-### Receiver is occupied or refuses permission
+### Receiver is occupied
 
-SORALink needs an exclusive control session. Force-stop or completely exit the official application on every phone, tablet, and computer that may still be connected.
-
-### No signal lock
-
-- Verify frequency, symbol rate, polarization, and service ID.
-- Confirm orbital position and east/west direction.
-- Check dish signal and cabling.
-- Verify LNB oscillator and switch values.
-- Select the correct DiSEqC input.
-- Try `--sat-setup` when explicit setup is required.
-
-### Repeated stream timeouts or recovery attempts
-
-- Allow UDP traffic to and from the receiver stream port.
-- Confirm tuning completed with signal lock.
-- Check host and network firewalls.
-- Confirm `--stream-port` when it does not use UDP `8800`.
-- Increase `--timeout-ms` on slow or unstable networks.
-- Run with `--verbose` to inspect protocol activity.
+Legacy devices require an exclusive permission session. SAT>IP devices have a finite tuner/session count. Close other applications and power-cycle the device if abandoned sessions remain.
 
 ### VLC opens the playlist but cannot play a channel
 
-- Check the tuning response with `--verbose`.
-- Verify `lcn`, `freq`, `sym`, `pol`, and `s_id` in the channel entry.
 - Open `/channel/<lcn>` directly in VLC.
-- Check `/status.json`.
-- Confirm no update or scan is active.
+- Check `/status.json` and `/admin/api/status`.
+- Confirm no scan or EPG update is active.
+- For SAT>IP, verify the channel contains `msys`, `mtype`, `ro`, `plts`, `fec`, and `pids`.
 - When authentication is enabled, ensure VLC sends credentials for both playlist and stream URLs.
-- With TLS, ensure VLC trusts the server certificate.
+
+### EPG does not match channels
+
+- For SAT>IP native EPG, retain the generated `epg_id` values.
+- For external XMLTV, map the provider's channel IDs to `epg_id`/`xmltv_id`.
+- Reload EPG after replacing the XMLTV file.
 
 ### Dashboard asset is missing
 
-- Confirm all documented files exist in the configured `web/` directory.
+- Confirm all files exist in the configured `web/` directory.
 - Use `--web-root DIR` when assets are elsewhere.
 - Use `--no-webui` when the dashboard is not required.
-
-### Dashboard cannot bind to a LAN address
-
-An enabled dashboard cannot be exposed beyond loopback without credentials. Configure either a dedicated administrator pair or the viewer pair.
-
-### EPG is empty or does not match channels
-
-- Confirm `--epg FILE` points to readable XMLTV data.
-- Match `epg_id`/`xmltv_id` to the XMLTV channel ID.
-- Reload EPG after replacing the file.
-- For native EPG, confirm relevant channels contain a valid `prog_idx`.
-
-### XMLTV download fails
-
-- Supply both `--epg-update` and `--epg-url`.
-- Use an uncompressed XML endpoint.
-- Increase `--epg-update-timeout-ms` for a slow server.
-- Build with OpenSSL for HTTPS.
-- Confirm the operating system/OpenSSL installation has a usable CA trust store.
-- Replace unsupported relative redirects with a direct or absolute URL.
-
-### Native refresh fails
-
-- Disconnect all viewers.
-- Confirm the receiver firmware supports the implemented commands.
-- Use `--verbose` to inspect protocol traffic.
-- Keep known-good local `channels.xml` and `epg.xml` files as fallbacks.
-
-### Scan does not finish
-
-- Increase `--device-scan-timeout-minutes` within `1` to `120`.
-- Check progress in the dashboard.
-- Cancel before retrying with different receiver-specific range/order/sort values.
-- Use compatibility mode `--device-scan-mode 0` when the default mode is unsuitable.
-- Confirm the official receiver application has not reclaimed the session.
-
-### Different channel returns HTTP 409
-
-Another viewer is using the currently tuned channel. Close all clients on that stream or disconnect them through the dashboard before selecting a new channel.
-
-### Client limit is reached
-
-Increase `--max-clients` up to `64`, or disconnect inactive viewers.
 
 ### HTTP bind fails
 
 Another process may already use the address or port:
 
 ```bash
-./soralink --device soralink.local --server --http-port 8090
+./soralink --device 192.168.0.130 --device-type satip --server --http-port 8090
 ```
 
-For IPv6 URLs, use brackets, for example:
+For IPv6 URLs, use brackets:
 
 ```text
 http://[::1]:8080/playlist.m3u
@@ -1030,34 +1048,28 @@ http://[::1]:8080/playlist.m3u
 
 ### TLS support is unavailable
 
-Rebuild with `-DSORALINK_USE_OPENSSL` and link `libssl` and `libcrypto`. Supply both `--tls-cert` and `--tls-key`.
-
-### Encrypted channels remain scrambled
-
-- Determine whether the packets use the even or odd scrambling state.
-- Supply the corresponding key.
-- Check AES counters in `/status.json`, `/admin/api/status`, or console output.
-- Remember that `--missing-key pass` deliberately preserves packets that cannot be decrypted.
+Rebuild with `-DSORALINK_USE_OPENSSL`, link `libssl` and `libcrypto`, and supply both `--tls-cert` and `--tls-key`.
 
 ## Limitations
 
-- The receiver can tune one HTTP channel at a time, although many viewers may share it.
+- The HTTP server currently tunes one upstream channel at a time, even on multi-tuner SAT>IP hardware.
+- Multiple viewers can share only the currently tuned channel.
+- SAT>IP scanning is a preset/transponder-table scan, not a blind RF scan.
+- SAT>IP channel downloads are not available through the proprietary legacy database command.
+- Native EIT completeness depends on what each broadcaster transmits and the collection dwell time.
 - The dashboard assets are external and are not embedded in the executable.
 - The HTTP service is purpose-built for SORALink and is not a general-purpose web server.
-- Authentication is HTTP Basic with separate viewer/administrator credentials, not a role-management system.
 - Native TLS and HTTPS XMLTV downloads require an OpenSSL build.
 - Channel XML and XMLTV parsing intentionally support only the documented subset.
 - The XMLTV downloader expects uncompressed content and does not support arbitrary relative redirects.
-- Native lineup, EPG, and scan commands depend on receiver implementation and firmware.
-- The built-in Astra sweep is specifically defined for `19.2°E`.
-- `F` and `O` polarization/voltage modes are receiver-specific.
-- The legacy built-in key and protocol framing are implementation-specific.
+- Legacy lineup, EPG, and scan commands depend on receiver implementation and firmware.
+- The bundled software scan is specifically defined for Astra `19.2°E`; other satellites require a suitable preset.
 - Hardware compatibility depends on the target receiver and firmware.
 
 ## Stopping SORALink
 
-Press `Ctrl+C`. SORALink handles `SIGINT`/`SIGTERM` on POSIX and the equivalent console events on Windows, closes sockets, releases TLS resources when enabled, and exits.
+Press `Ctrl+C`. SORALink handles `SIGINT`/`SIGTERM` on POSIX and the equivalent console events on Windows, closes sockets, sends SAT>IP teardown when applicable, releases TLS resources, and exits.
 
 ## Disclaimer
 
-Use SORALink only with hardware, services, keys, and content that you are authorized to access. This is an independent interoperability project and is not presented as an official application from the receiver manufacturer or VLC.
+Use SORALink only with hardware, services, keys, and content that you are authorized to access. This is an independent interoperability project and is not presented as an official application from TELESTAR, WISI, S2D, the SAT>IP Alliance, or VLC.

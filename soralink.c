@@ -232,10 +232,15 @@ typedef struct {
     uint32_t symbol_rate_ks;
     uint32_t service_id;
     uint32_t frequency_mhz;
+    char satip_freq[16];
     uint32_t lcn;
     uint32_t program_index;
     uint32_t transport_stream_id;
     char msys[8];
+    char mtype[8];
+    char ro[8];
+    char plts[8];
+    char fec[8];
     char pids[512];
     bool have_program_index;
     bool fta;
@@ -268,6 +273,12 @@ typedef struct {
     uint16_t frequency_mhz;
     uint16_t symbol_rate_ks;
     char polarization;
+    char satip_freq[16];
+    char msys[8];
+    char mtype[8];
+    char ro[8];
+    char plts[8];
+    char fec[8];
 } satellite_transponder_t;
 
 typedef struct {
@@ -433,7 +444,7 @@ static void print_usage(const char *program)
         "  --epg-update-timeout-ms N  EPG download timeout (default 30000)\n"
         "  --device-channels-update  Refresh channel XML from the Device\n"
         "  --no-device-channels-update  Disable native channel refresh (default)\n"
-        "  --device-epg-update   Refresh XMLTV from the Device EPG cache\n"
+        "  --device-epg-update   Refresh XMLTV from legacy cache or SAT>IP DVB EIT\n"
         "  --no-device-epg-update  Disable native EPG refresh (default)\n"
         "  --device-channels-refresh-minutes N  Periodic channel refresh; 0 disables\n"
         "  --device-epg-refresh-minutes N  Periodic EPG refresh; 0 disables\n"
@@ -475,7 +486,7 @@ static void print_usage(const char *program)
         "  POST /admin/device/update-channels  Refresh lineup from device\n"
         "  POST /admin/device/update-epg       Refresh EPG from device\n"
         "  POST /admin/device/update-all      Refresh channels and EPG\n"
-        "  POST /admin/device/scan            Start receiver channel scan\n"
+        "  POST /admin/device/scan            Start channel scan / SAT>IP transponder sweep\n"
         "  POST /admin/device/scan-cancel     Cancel receiver channel scan\n");
 }
 
@@ -626,6 +637,84 @@ static bool parse_satip_msys(const char *text, char output[8])
     return false;
 }
 
+static bool parse_satip_choice(const char *text,
+                               const char *const *choices,
+                               size_t choice_count,
+                               char output[8])
+{
+    size_t i;
+    if (text == NULL || output == NULL) return false;
+    for (i = 0U; i < choice_count; ++i) {
+        const size_t length = strlen(choices[i]);
+        if (length < 8U && STRNCASECMP(text, choices[i], length + 1U) == 0) {
+            snprintf(output, 8U, "%s", choices[i]);
+            return true;
+        }
+    }
+    output[0] = '\0';
+    return false;
+}
+
+static bool parse_satip_mtype(const char *text, char output[8])
+{
+    static const char *const choices[] = {"qpsk", "8psk", "16apsk", "32apsk"};
+    return parse_satip_choice(text, choices,
+                              sizeof(choices) / sizeof(choices[0]), output);
+}
+
+static bool parse_satip_ro(const char *text, char output[8])
+{
+    static const char *const choices[] = {"0.20", "0.25", "0.35"};
+    return parse_satip_choice(text, choices,
+                              sizeof(choices) / sizeof(choices[0]), output);
+}
+
+static bool parse_satip_plts(const char *text, char output[8])
+{
+    static const char *const choices[] = {"on", "off", "auto"};
+    return parse_satip_choice(text, choices,
+                              sizeof(choices) / sizeof(choices[0]), output);
+}
+
+static bool parse_satip_fec(const char *text, char output[8])
+{
+    static const char *const choices[] = {
+        "12", "23", "34", "35", "45", "56", "78", "89", "910",
+        "auto", "none"
+    };
+    return parse_satip_choice(text, choices,
+                              sizeof(choices) / sizeof(choices[0]), output);
+}
+
+static bool parse_satip_frequency(const char *text,
+                                  char output[16],
+                                  uint32_t *rounded_mhz)
+{
+    char *end;
+    double value;
+    size_t length;
+    if (text == NULL || output == NULL || rounded_mhz == NULL) return false;
+    errno = 0;
+    value = strtod(text, &end);
+    if (errno != 0 || end == text) return false;
+    while (*end != '\0' && isspace((unsigned char)*end)) ++end;
+    if (*end != '\0' || value <= 0.0 || value > 65535.0) return false;
+    if ((uint32_t)(value + 0.5) > 65535U) return false;
+    snprintf(output, 16U, "%.3f", value);
+    length = strlen(output);
+    while (length > 0U && output[length - 1U] == '0') output[--length] = '\0';
+    if (length > 0U && output[length - 1U] == '.') output[--length] = '\0';
+    *rounded_mhz = (uint32_t)(value + 0.5);
+    return output[0] != '\0';
+}
+
+static void satip_channel_defaults(channel_t *channel)
+{
+    if (channel == NULL) return;
+    snprintf(channel->msys, sizeof(channel->msys), "%s", "auto");
+    snprintf(channel->pids, sizeof(channel->pids), "%s", "all");
+}
+
 static bool parse_satip_pids(const char *text, char output[512])
 {
     const char *cursor;
@@ -654,6 +743,44 @@ static bool parse_satip_pids(const char *text, char output[512])
         if (*cursor == '\0') return false;
     }
     memmove(output, text, length + 1U);
+    return true;
+}
+
+static bool satip_apply_low_pid_workaround(const char *input,
+                                           char output[512],
+                                           bool *changed)
+{
+    const char *cursor;
+    size_t length;
+    bool have_high_pid = false;
+
+    if (input == NULL || output == NULL) return false;
+    if (changed != NULL) *changed = false;
+    if (STRNCASECMP(input, "all", 4U) == 0) {
+        snprintf(output, 512U, "%s", "all");
+        return true;
+    }
+    if (!parse_satip_pids(input, output)) return false;
+
+    cursor = output;
+    while (*cursor != '\0') {
+        uint32_t pid = 0U;
+        while (isdigit((unsigned char)*cursor)) {
+            pid = pid * 10U + (uint32_t)(*cursor - '0');
+            ++cursor;
+        }
+        if (pid > 20U) {
+            have_high_pid = true;
+            break;
+        }
+        if (*cursor == ',') ++cursor;
+    }
+    if (have_high_pid) return true;
+
+    length = strlen(output);
+    if (length + 3U >= 512U) return false;
+    memcpy(output + length, ",21", 4U);
+    if (changed != NULL) *changed = true;
     return true;
 }
 
@@ -1626,13 +1753,10 @@ static bool parse_options(int argc, char **argv, options_t *opt)
         }
         opt->have_even_key = false;
         opt->have_odd_key = false;
-        if (opt->device_channels_update || opt->device_epg_update ||
-            opt->device_scan_refresh_minutes > 0U) {
+        if (opt->device_channels_update) {
             fprintf(stderr,
-                    "Warning: native receiver channel/EPG/scan operations are unavailable for SAT>IP; local channel XML and XMLTV remain supported.\n");
+                    "Warning: proprietary receiver channel downloads are unavailable for SAT>IP; use the software channel scan instead.\n");
             opt->device_channels_update = false;
-            opt->device_epg_update = false;
-            opt->device_scan_refresh_minutes = 0U;
         }
     }
 
@@ -2245,6 +2369,7 @@ static bool recv_all(socket_t sock, uint8_t *data, size_t length)
 
 
 static socket_t create_udp_socket(int family, int timeout_ms);
+static double monotonic_seconds(void);
 
 static int satip_wait_readable(socket_t sock, int timeout_ms)
 {
@@ -2590,6 +2715,13 @@ static tune_result_t satip_session_start_once(satip_session_t *session,
     uint8_t *payload;
     size_t payload_length;
     char pol;
+    char frequency[32];
+    const char *mtype;
+    const char *ro;
+    const char *plts;
+    const char *fec;
+    char effective_pids[512];
+    bool pid_workaround_applied = false;
     int ready;
 
     satip_session_stop(session, false);
@@ -2618,12 +2750,33 @@ static tune_result_t satip_session_start_once(satip_session_t *session,
     }
 
     pol = (char)tolower((unsigned char)channel->polarization);
+    if (channel->satip_freq[0] != '\0') {
+        snprintf(frequency, sizeof(frequency), "%s", channel->satip_freq);
+    } else {
+        snprintf(frequency, sizeof(frequency), "%u",
+                 (unsigned)channel->frequency_mhz);
+    }
+    mtype = channel->mtype[0] != '\0' ? channel->mtype :
+            (strcmp(msys, "dvbs2") == 0 ? "8psk" : "qpsk");
+    ro = channel->ro[0] != '\0' ? channel->ro : "0.35";
+    plts = channel->plts[0] != '\0' ? channel->plts : "on";
+    fec = channel->fec[0] != '\0' ? channel->fec : "auto";
+    if (!satip_apply_low_pid_workaround(
+            channel->pids[0] != '\0' ? channel->pids : "all",
+            effective_pids, &pid_workaround_applied)) {
+        fprintf(stderr, "Invalid SAT>IP PID request.\n");
+        satip_session_stop(session, false);
+        return TUNE_RESULT_CONTROL_ERROR;
+    }
+    if (pid_workaround_applied && opt->verbose) {
+        printf("SAT>IP DIGIBIT compatibility: appended PID 21 to the low-PID request.\n");
+    }
     snprintf(setup_url, sizeof(setup_url),
-             "%s?src=%u&freq=%u&pol=%c&msys=%s&sr=%u&pids=%s",
+             "%s?src=%u&freq=%s&pol=%c&ro=%s&msys=%s&mtype=%s&plts=%s&sr=%u&fec=%s&pids=%s",
              root_url, (unsigned)opt->satip_source,
-             (unsigned)channel->frequency_mhz, pol, msys,
+             frequency, pol, ro, msys, mtype, plts,
              (unsigned)channel->symbol_rate_ks,
-             channel->pids[0] != '\0' ? channel->pids : "all");
+             fec, effective_pids);
     snprintf(transport, sizeof(transport),
              "Transport: RTP/AVP;unicast;client_port=%u-%u\r\n",
              (unsigned)rtp_port, (unsigned)(rtp_port + 1U));
@@ -2649,20 +2802,59 @@ static tune_result_t satip_session_start_once(satip_session_t *session,
         return TUNE_RESULT_CONTROL_ERROR;
     }
 
-    ready = satip_wait_readable(session->rtp,
-                                opt->timeout_ms < 2000 ? opt->timeout_ms : 2000);
-    if (ready <= 0) {
-        satip_session_stop(session, true);
-        return ready < 0 ? TUNE_RESULT_CONTROL_ERROR : TUNE_RESULT_NO_LOCK;
-    }
-    received = socket_recv_bytes(session->rtp, (char *)first_packet,
-                                 (int)sizeof(first_packet), 0);
-    if (received <= 0 ||
-        !satip_rtp_payload(first_packet, (size_t)received,
-                           &payload, &payload_length) ||
-        payload_length > sizeof(session->pending_packet)) {
-        satip_session_stop(session, true);
-        return TUNE_RESULT_NO_LOCK;
+    {
+        int lock_timeout_ms = opt->timeout_ms;
+        const double started = monotonic_seconds();
+        double deadline;
+        bool got_transport = false;
+
+        if (lock_timeout_ms < 2000) lock_timeout_ms = 2000;
+        if (lock_timeout_ms > 15000) lock_timeout_ms = 15000;
+        deadline = started + (double)lock_timeout_ms / 1000.0;
+
+        if (opt->verbose) {
+            printf("SAT>IP waiting up to %d ms for the first MPEG-TS packet.\n",
+                   lock_timeout_ms);
+        }
+
+        while (g_running && monotonic_seconds() < deadline) {
+            const double remaining_seconds = deadline - monotonic_seconds();
+            int remaining_ms = (int)(remaining_seconds * 1000.0);
+            if (remaining_ms < 1) remaining_ms = 1;
+            ready = satip_wait_readable(session->rtp, remaining_ms);
+            if (ready < 0) {
+                satip_session_stop(session, true);
+                return TUNE_RESULT_CONTROL_ERROR;
+            }
+            if (ready == 0) break;
+            {
+                struct sockaddr_storage source;
+                socklen_t source_length = (socklen_t)sizeof(source);
+                received = socket_recvfrom_bytes(
+                    session->rtp, (char *)first_packet,
+                    (int)sizeof(first_packet), 0,
+                    (struct sockaddr *)&source, &source_length);
+            }
+            if (received <= 0) continue;
+            if (!satip_rtp_payload(first_packet, (size_t)received,
+                                   &payload, &payload_length)) {
+                continue;
+            }
+            if (payload_length > sizeof(session->pending_packet)) {
+                continue;
+            }
+            got_transport = true;
+            break;
+        }
+
+        if (!got_transport) {
+            if (opt->verbose) {
+                printf("SAT>IP received no MPEG-TS packet within %d ms.\n",
+                       lock_timeout_ms);
+            }
+            satip_session_stop(session, true);
+            return TUNE_RESULT_NO_LOCK;
+        }
     }
     memcpy(session->pending_packet, payload, payload_length);
     session->pending_length = payload_length;
@@ -2722,8 +2914,14 @@ static socket_io_t satip_session_receive(satip_session_t *session,
         session->pending_length = 0U;
         return received;
     }
-    received = socket_recv_bytes(session->rtp, (char *)packet,
-                                 (int)sizeof(packet), 0);
+    {
+        struct sockaddr_storage source;
+        socklen_t source_length = (socklen_t)sizeof(source);
+        received = socket_recvfrom_bytes(session->rtp, (char *)packet,
+                                         (int)sizeof(packet), 0,
+                                         (struct sockaddr *)&source,
+                                         &source_length);
+    }
     if (received <= 0) return received;
     if (!satip_rtp_payload(packet, (size_t)received,
                            &payload, &payload_length) ||
@@ -4436,11 +4634,13 @@ static int stream_satip_to_vlc(const options_t *opt)
 
     memset(&channel, 0, sizeof(channel));
     channel.frequency_mhz = opt->frequency_mhz;
+    snprintf(channel.satip_freq, sizeof(channel.satip_freq), "%u",
+             (unsigned)opt->frequency_mhz);
     channel.symbol_rate_ks = opt->symbol_rate_ks;
     channel.polarization = opt->polarization;
     channel.service_id = opt->service_id;
+    satip_channel_defaults(&channel);
     snprintf(channel.msys, sizeof(channel.msys), "%s", opt->satip_msys);
-    snprintf(channel.pids, sizeof(channel.pids), "%s", "all");
     snprintf(channel.name, sizeof(channel.name), "Service %u",
              (unsigned)channel.service_id);
 
@@ -4719,8 +4919,7 @@ static bool parse_channel_tag(const char *tag, channel_t *channel)
     size_t i;
 
     memset(channel, 0, sizeof(*channel));
-    snprintf(channel->msys, sizeof(channel->msys), "%s", "auto");
-    snprintf(channel->pids, sizeof(channel->pids), "%s", "all");
+    satip_channel_defaults(channel);
     if (!xml_attribute(tag, "type", channel->type, sizeof(channel->type)) ||
         !xml_attribute(tag, "pol", text, sizeof(text)) ||
         !parse_polarization(text, &channel->polarization) ||
@@ -4729,7 +4928,8 @@ static bool parse_channel_tag(const char *tag, channel_t *channel)
         !xml_attribute(tag, "s_id", text, sizeof(text)) ||
         !parse_u32(text, &channel->service_id) ||
         !xml_attribute(tag, "freq", text, sizeof(text)) ||
-        !parse_u32(text, &channel->frequency_mhz) ||
+        !parse_satip_frequency(text, channel->satip_freq,
+                               &channel->frequency_mhz) ||
         !xml_attribute(tag, "lcn", text, sizeof(text)) ||
         !parse_u32(text, &channel->lcn) ||
         !xml_attribute(tag, "s_name", channel->name, sizeof(channel->name))) {
@@ -4757,6 +4957,22 @@ static bool parse_channel_tag(const char *tag, channel_t *channel)
     }
     if (xml_attribute(tag, "msys", text, sizeof(text)) &&
         !parse_satip_msys(text, channel->msys)) {
+        return false;
+    }
+    if (xml_attribute(tag, "mtype", text, sizeof(text)) &&
+        !parse_satip_mtype(text, channel->mtype)) {
+        return false;
+    }
+    if (xml_attribute(tag, "ro", text, sizeof(text)) &&
+        !parse_satip_ro(text, channel->ro)) {
+        return false;
+    }
+    if (xml_attribute(tag, "plts", text, sizeof(text)) &&
+        !parse_satip_plts(text, channel->plts)) {
+        return false;
+    }
+    if (xml_attribute(tag, "fec", text, sizeof(text)) &&
+        !parse_satip_fec(text, channel->fec)) {
         return false;
     }
     if (xml_attribute(tag, "pids", text, sizeof(text)) &&
@@ -5465,48 +5681,77 @@ static void build_device_epg_data_request(uint8_t frame[FRAME_SIZE],
 #define DEVICE_CHANNEL_RETRY_BASE_MS 1500U
 
 static const satellite_transponder_t astra_19e_transponders[] = {
-    {10729,23500,'V'}, {10758,22000,'V'}, {10773,22000,'H'},
-    {10788,22000,'V'}, {10802,22000,'H'}, {10817,22000,'V'},
-    {10832,22000,'H'}, {10847,22000,'V'}, {10876,22000,'V'},
-    {10891,22000,'H'}, {10906,22000,'V'}, {10921,22000,'H'},
-    {10936,22000,'V'}, {10964,22000,'H'}, {10979,22000,'V'},
-    {10993,22000,'H'}, {11009,23500,'V'}, {11038,22000,'V'},
-    {11052,22000,'H'}, {11067,22000,'V'}, {11082,22000,'H'},
-    {11097,22000,'V'}, {11112,22000,'H'}, {11127,22000,'V'},
-    {11156,22000,'V'}, {11186,22000,'V'}, {11229,22000,'V'},
-    {11244,22000,'H'}, {11259,22000,'V'}, {11273,22000,'H'},
-    {11288,22000,'V'}, {11303,22000,'H'}, {11318,22000,'V'},
-    {11347,22000,'V'}, {11362,22000,'H'}, {11377,22000,'V'},
-    {11391,22000,'H'}, {11406,23500,'V'}, {11420,22000,'H'},
-    {11429,7500,'V'}, {11464,22000,'H'}, {11494,22000,'H'},
-    {11509,22000,'V'}, {11523,22000,'H'}, {11538,22000,'V'},
-    {11553,22000,'H'}, {11561,7200,'V'}, {11582,22000,'H'},
-    {11605,7200,'H'}, {11618,7200,'H'}, {11633,7200,'V'},
-    {11648,7200,'V'}, {11671,22000,'H'}, {11694,940,'V'},
-    {11697,2915,'V'}, {11739,27500,'V'}, {11758,27500,'H'},
-    {11778,29500,'V'}, {11798,27500,'H'}, {11817,31428,'V'},
-    {11836,27500,'H'}, {11856,29700,'V'}, {11895,29700,'V'},
-    {11914,27500,'H'}, {11934,29700,'V'}, {11953,27500,'H'},
-    {11973,27500,'V'}, {11992,27500,'H'}, {12012,29700,'V'},
-    {12032,27500,'H'}, {12051,27500,'V'}, {12070,31428,'H'},
-    {12090,29700,'V'}, {12110,27500,'H'}, {12148,27500,'H'},
-    {12168,29700,'V'}, {12188,27500,'H'}, {12207,29700,'V'},
-    {12226,27500,'H'}, {12285,29700,'V'}, {12304,27500,'H'},
-    {12324,29700,'V'}, {12344,27500,'H'}, {12363,27500,'V'},
-    {12382,27500,'H'}, {12402,29700,'V'}, {12422,27500,'H'},
-    {12460,27500,'H'}, {12480,27500,'V'}, {12515,22000,'H'},
-    {12545,22000,'H'}, {12552,22000,'V'}, {12574,22000,'H'},
-    {12604,22000,'H'}, {12610,22000,'V'}, {12633,22000,'H'},
-    {12640,23500,'V'}, {12663,22000,'H'}, {12669,23500,'V'}
+    {10759,22000,'V',"10758.5","dvbs2","8psk","0.35","on","23"},
+    {10773,22000,'H',"10773.3","dvbs2","8psk","0.20","on","34"},
+    {10803,22000,'H',"10802.8","dvbs2","8psk","0.35","on","34"},
+    {10847,22000,'V',"10847.0","dvbs","qpsk","0.35","on","56"},
+    {10891,22000,'H',"10891.3","dvbs2","8psk","0.35","on","23"},
+    {10921,22000,'H',"10920.8","dvbs","qpsk","0.35","on","78"},
+    {10936,22000,'V',"10935.5","dvbs","qpsk","0.35","on","56"},
+    {10964,22000,'H',"10964.3","dvbs2","8psk","0.35","on","23"},
+    {10994,22000,'H',"10993.8","dvbs2","8psk","0.35","on","56"},
+    {11053,22000,'H',"11052.8","dvbs2","8psk","0.35","on","23"},
+    {11068,22000,'V',"11067.5","dvbs","qpsk","0.35","on","56"},
+    {11082,22000,'H',"11082.3","dvbs2","8psk","0.20","on","34"},
+    {11112,22000,'H',"11111.8","dvbs2","8psk","0.35","on","23"},
+    {11156,22000,'V',"11156.0","dvbs","qpsk","0.35","on","56"},
+    {11229,22000,'V',"11229.0","dvbs2","8psk","0.20","on","23"},
+    {11244,22000,'H',"11243.8","dvbs","qpsk","0.35","on","56"},
+    {11273,22000,'H',"11273.3","dvbs2","8psk","0.35","on","23"},
+    {11288,22000,'V',"11288.0","dvbs2","8psk","0.20","on","23"},
+    {11303,22000,'H',"11302.8","dvbs2","8psk","0.35","on","23"},
+    {11318,22000,'V',"11317.5","dvbs","qpsk","0.35","on","56"},
+    {11347,22000,'V',"11347.0","dvbs2","8psk","0.35","on","23"},
+    {11362,22000,'H',"11361.8","dvbs2","8psk","0.35","on","23"},
+    {11377,22000,'V',"11376.5","dvbs2","8psk","0.35","on","23"},
+    {11494,22000,'H',"11493.8","dvbs2","8psk","0.35","on","23"},
+    {11509,22000,'V',"11508.5","dvbs","qpsk","0.35","on","56"},
+    {11523,22000,'H',"11523.3","dvbs2","8psk","0.35","on","23"},
+    {11538,22000,'V',"11538.0","dvbs","qpsk","0.35","on","56"},
+    {11553,22000,'H',"11552.8","dvbs2","8psk","0.35","on","23"},
+    {11582,22000,'H',"11582.3","dvbs2","8psk","0.35","on","23"},
+    {11671,22000,'H',"11670.8","dvbs2","8psk","0.35","on","23"},
+    {11739,27500,'V',"11739.0","dvbs","qpsk","0.35","on","34"},
+    {11778,29500,'V',"11778.0","dvbs2","qpsk","0.25","on","910"},
+    {11837,27500,'H',"11836.5","dvbs","qpsk","0.35","on","34"},
+    {11934,29700,'V',"11934.0","dvbs2","8psk","0.25","on","23"},
+    {11973,27500,'V',"11973.0","dvbs","qpsk","0.35","on","34"},
+    {12051,27500,'V',"12051.0","dvbs","qpsk","0.35","on","34"},
+    {12110,27500,'H',"12109.5","dvbs","qpsk","0.35","on","34"},
+    {12149,27500,'H',"12148.5","dvbs","qpsk","0.35","on","34"},
+    {12168,29700,'V',"12168.0","dvbs2","8psk","0.25","on","23"},
+    {12188,27500,'H',"12187.5","dvbs","qpsk","0.35","on","34"},
+    {12207,29700,'V',"12207.0","dvbs2","8psk","0.25","on","23"},
+    {12227,27500,'H',"12226.5","dvbs","qpsk","0.35","on","34"},
+    {12285,29700,'V',"12285.0","dvbs2","8psk","0.25","on","23"},
+    {12383,27500,'H',"12382.5","dvbs2","8psk","0.35","on","34"},
+    {12402,29700,'V',"12402.0","dvbs2","8psk","0.25","on","23"},
+    {12461,27500,'H',"12460.5","dvbs","qpsk","0.35","on","34"},
+    {12480,27500,'V',"12480.0","dvbs","qpsk","0.35","on","34"},
+    {12515,22000,'H',"12515.3","dvbs","qpsk","0.35","on","56"},
+    {12545,22000,'H',"12544.8","dvbs","qpsk","0.35","on","56"},
+    {12552,22000,'V',"12551.5","dvbs","qpsk","0.35","on","56"},
+    {12574,22000,'H',"12574.3","dvbs2","8psk","0.35","on","23"},
+    {12604,22000,'H',"12603.8","dvbs","qpsk","0.35","on","56"},
+    {12633,22000,'H',"12633.3","dvbs","qpsk","0.35","on","56"},
+    {12663,22000,'H',"12662.8","dvbs","qpsk","0.35","on","56"},
+    {12692,22000,'H',"12692.3","dvbs","qpsk","0.35","on","56"}
 };
 
 static bool transponder_array_append(satellite_transponder_t **items,
                                      size_t *count,
                                      uint32_t frequency,
                                      char polarization,
-                                     uint32_t symbol_rate)
+                                     uint32_t symbol_rate,
+                                     const char *satip_freq,
+                                     const char *msys,
+                                     const char *mtype,
+                                     const char *ro,
+                                     const char *plts,
+                                     const char *fec)
 {
     satellite_transponder_t *resized;
+    size_t i;
     if (frequency == 0U || frequency > UINT16_MAX ||
         symbol_rate == 0U || symbol_rate > UINT16_MAX ||
         (polarization != 'H' && polarization != 'V')) {
@@ -5520,6 +5765,36 @@ static bool transponder_array_append(satellite_transponder_t **items,
     resized[*count].frequency_mhz = (uint16_t)frequency;
     resized[*count].symbol_rate_ks = (uint16_t)symbol_rate;
     resized[*count].polarization = polarization;
+    resized[*count].satip_freq[0] = '\0';
+    resized[*count].msys[0] = '\0';
+    resized[*count].mtype[0] = '\0';
+    resized[*count].ro[0] = '\0';
+    resized[*count].plts[0] = '\0';
+    resized[*count].fec[0] = '\0';
+    if (satip_freq != NULL && *satip_freq != '\0') {
+        snprintf(resized[*count].satip_freq,
+                 sizeof(resized[*count].satip_freq), "%s", satip_freq);
+    }
+    if (msys != NULL && *msys != '\0') {
+        snprintf(resized[*count].msys, sizeof(resized[*count].msys), "%s", msys);
+        snprintf(resized[*count].mtype, sizeof(resized[*count].mtype), "%s", mtype);
+        snprintf(resized[*count].ro, sizeof(resized[*count].ro), "%s", ro);
+        snprintf(resized[*count].plts, sizeof(resized[*count].plts), "%s", plts);
+        snprintf(resized[*count].fec, sizeof(resized[*count].fec), "%s", fec);
+    } else {
+        for (i = 0U; i < sizeof(astra_19e_transponders) /
+                            sizeof(astra_19e_transponders[0]); ++i) {
+            const satellite_transponder_t *known = &astra_19e_transponders[i];
+            const unsigned delta = known->frequency_mhz > frequency
+                ? (unsigned)(known->frequency_mhz - frequency)
+                : (unsigned)(frequency - known->frequency_mhz);
+            if (delta <= 1U && known->polarization == polarization &&
+                known->symbol_rate_ks == symbol_rate) {
+                resized[*count] = *known;
+                break;
+            }
+        }
+    }
     ++*count;
     return true;
 }
@@ -5580,39 +5855,49 @@ static bool load_transponder_table_section(const char *path,
         }
         if (!in_section) continue;
         {
-            char *first = text;
-            char *second;
-            char *third;
+            char *tokens[8];
+            size_t token_count = 0U;
+            char *token = strtok(text, ", \t\r\n");
             uint32_t frequency;
             uint32_t symbol_rate;
+            char frequency_text[16];
             char polarization;
+            char msys[8] = "";
+            char mtype[8] = "";
+            char ro[8] = "";
+            char plts[8] = "";
+            char fec[8] = "";
 
-            second = strpbrk(first, ", \t");
-            if (second == NULL) goto invalid_line;
-            *second++ = '\0';
-            second = trim_config_text(second);
-            while (*second == ',' || isspace((unsigned char)*second)) ++second;
-            third = strpbrk(second, ", \t");
-            if (third == NULL) goto invalid_line;
-            *third++ = '\0';
-            third = trim_config_text(third);
-            while (*third == ',' || isspace((unsigned char)*third)) ++third;
-            {
-                char *end = strpbrk(third, ", \t");
-                if (end != NULL) *end = '\0';
+            while (token != NULL && token_count < 8U) {
+                tokens[token_count++] = token;
+                token = strtok(NULL, ", \t\r\n");
             }
-            if (!parse_u32(trim_config_text(first), &frequency) ||
-                !parse_polarization(trim_config_text(second), &polarization) ||
-                !parse_u32(trim_config_text(third), &symbol_rate) ||
-                !transponder_array_append(items, count, frequency,
-                                          polarization, symbol_rate)) {
+            if (token != NULL || (token_count != 3U && token_count != 8U) ||
+                !parse_satip_frequency(tokens[0], frequency_text, &frequency) ||
+                !parse_polarization(tokens[1], &polarization) ||
+                !parse_u32(tokens[2], &symbol_rate)) goto invalid_line;
+            if (token_count == 8U &&
+                (!parse_satip_msys(tokens[3], msys) ||
+                 strcmp(msys, "auto") == 0 ||
+                 !parse_satip_mtype(tokens[4], mtype) ||
+                 !parse_satip_ro(tokens[5], ro) ||
+                 !parse_satip_plts(tokens[6], plts) ||
+                 !parse_satip_fec(tokens[7], fec))) goto invalid_line;
+            if (!transponder_array_append(items, count, frequency,
+                                          polarization, symbol_rate,
+                                          frequency_text,
+                                          token_count == 8U ? msys : NULL,
+                                          token_count == 8U ? mtype : NULL,
+                                          token_count == 8U ? ro : NULL,
+                                          token_count == 8U ? plts : NULL,
+                                          token_count == 8U ? fec : NULL)) {
 invalid_line:
                 fclose(file);
                 free(*items);
                 *items = NULL;
                 *count = 0U;
                 snprintf(message, message_size,
-                         "Invalid transponder at %s:%u; use frequency_mhz,pol,symbol_rate_ks",
+                         "Invalid transponder at %s:%u; use freq,pol,sr[,msys,mtype,ro,plts,fec]",
                          path, line_number);
                 return false;
             }
@@ -5654,6 +5939,24 @@ static bool duplicate_builtin_astra(satellite_transponder_t **items,
     return true;
 }
 
+static bool transponder_table_has_complete_satip_parameters(
+    const satellite_transponder_t *items, size_t count)
+{
+    size_t i;
+    if (items == NULL || count == 0U) return false;
+    for (i = 0U; i < count; ++i) {
+        if (items[i].satip_freq[0] == '\0' ||
+            items[i].msys[0] == '\0' ||
+            items[i].mtype[0] == '\0' ||
+            items[i].ro[0] == '\0' ||
+            items[i].plts[0] == '\0' ||
+            items[i].fec[0] == '\0') {
+            return false;
+        }
+    }
+    return true;
+}
+
 static bool prepare_transponder_sweep(const options_t *opt,
                                       satellite_transponder_t **items,
                                       size_t *count,
@@ -5665,18 +5968,33 @@ static bool prepare_transponder_sweep(const options_t *opt,
     const char *preset = opt->satellite_preset != NULL &&
                          *opt->satellite_preset != '\0'
         ? opt->satellite_preset : "custom";
+    const bool is_astra_19e = strcmp(preset, "astra-19.2e") == 0 ||
+                              (opt->orbital_tenths == 192U && !opt->west);
     if (load_transponder_table_section(opt->transponder_table_path, preset,
                                       items, count, message, message_size)) {
-        snprintf(label, label_size, "%s", preset);
-        return true;
+        if (!is_astra_19e ||
+            transponder_table_has_complete_satip_parameters(*items, *count)) {
+            snprintf(label, label_size, "%s", preset);
+            return true;
+        }
+        free(*items);
+        *items = NULL;
+        *count = 0U;
+        if (duplicate_builtin_astra(items, count)) {
+            snprintf(label, label_size, "%s", "Astra 19.2E");
+            snprintf(message, message_size,
+                     "External Astra table lacks full SAT>IP parameters; "
+                     "using the built-in verified table (%zu transponders)",
+                     *count);
+            return true;
+        }
+        return false;
     }
-    if ((strcmp(preset, "astra-19.2e") == 0 ||
-         (opt->orbital_tenths == 192U && !opt->west)) &&
-        duplicate_builtin_astra(items, count)) {
+    if (is_astra_19e && duplicate_builtin_astra(items, count)) {
         snprintf(label, label_size, "%s", "Astra 19.2E");
         snprintf(message, message_size,
-                 "Using the built-in Astra 19.2E table (%zu transponders)",
-                 *count);
+                 "Using the built-in verified Astra 19.2E table "
+                 "(%zu transponders)", *count);
         return true;
     }
     return false;
@@ -5916,6 +6234,43 @@ static bool device_start_scan(socket_t *control,
     state->scan_next_poll = now + 0.5;
     state->scan_deadline = now + (double)opt->device_scan_timeout_minutes * 60.0;
     snprintf(state->last_action, sizeof(state->last_action), "scan");
+
+    if (opt->device_backend == DEVICE_BACKEND_SATIP) {
+        char preparation[256];
+        satellite_transponder_t *table = NULL;
+        size_t table_count = 0U;
+        char table_label[96];
+        table_label[0] = '\0';
+        preparation[0] = '\0';
+        if (!prepare_transponder_sweep(opt, &table, &table_count,
+                                      table_label, sizeof(table_label),
+                                      preparation, sizeof(preparation))) {
+            char failure[256];
+            snprintf(failure, sizeof(failure),
+                     "SAT>IP scan unavailable for %s: %.170s",
+                     opt->satellite_preset != NULL ? opt->satellite_preset : "custom",
+                     preparation[0] != '\0' ? preparation :
+                     "no detailed transponder table is available");
+            device_scan_mark_stopped(state, failure);
+            return false;
+        }
+        state->scan_transponder_sweep = true;
+        state->scan_sweep_index = 0U;
+        state->scan_sweep_total = table_count;
+        state->scan_sweep_transponders = table;
+        state->scan_mode = DEVICE_SCAN_UI_FULL_MODE;
+        state->scan_next_poll = now;
+        snprintf(state->scan_sweep_label, sizeof(state->scan_sweep_label),
+                 "%s", table_label);
+        free_channel_list(&state->scan_sweep_channels);
+        snprintf(state->last_message, sizeof(state->last_message),
+                 "Starting %s SAT>IP software scan (%zu transponders)",
+                 state->scan_sweep_label, state->scan_sweep_total);
+        printf("Starting %s SAT>IP software scan (%zu transponders). %s\n",
+               state->scan_sweep_label, state->scan_sweep_total, preparation);
+        return true;
+    }
+
     snprintf(state->last_message, sizeof(state->last_message),
              "Applying satellite profile for receiver scan");
 
@@ -5987,6 +6342,11 @@ static bool device_cancel_scan(socket_t *control,
 {
     bool sent;
     if (!state->scan_running) return false;
+    if (opt->device_backend == DEVICE_BACKEND_SATIP) {
+        device_scan_mark_stopped(state, "SAT>IP channel scan cancelled");
+        printf("SAT>IP channel scan cancelled.\n");
+        return true;
+    }
     sent = device_send_scan_action(control, opt, DEVICE_SCAN_STOP_ACTION);
     device_scan_mark_stopped(state,
                              sent ? "Receiver channel scan cancelled" :
@@ -6499,7 +6859,20 @@ static bool write_epg_xmltv(const char *path,
             !xml_write_escaped(file, program->channel_id) ||
             fputs("\"><title>", file) == EOF ||
             !xml_write_escaped(file, program->title) ||
-            fputs("</title></programme>\n", file) == EOF) goto fail;
+            fputs("</title>", file) == EOF) goto fail;
+        if (program->subtitle[0] != '\0' &&
+            (fputs("<sub-title>", file) == EOF ||
+             !xml_write_escaped(file, program->subtitle) ||
+             fputs("</sub-title>", file) == EOF)) goto fail;
+        if (program->description[0] != '\0' &&
+            (fputs("<desc>", file) == EOF ||
+             !xml_write_escaped(file, program->description) ||
+             fputs("</desc>", file) == EOF)) goto fail;
+        if (program->category[0] != '\0' &&
+            (fputs("<category>", file) == EOF ||
+             !xml_write_escaped(file, program->category) ||
+             fputs("</category>", file) == EOF)) goto fail;
+        if (fputs("</programme>\n", file) == EOF) goto fail;
     }
     if (fputs("</tv>\n", file) == EOF || fflush(file) != 0 || fclose(file) != 0)
         goto fail_closed;
@@ -6526,7 +6899,7 @@ static bool channel_is_replaced(const channel_list_t *channels,
     return false;
 }
 
-static bool device_refresh_epg(socket_t *control,
+static bool legacy_device_refresh_epg(socket_t *control,
                                const options_t *opt,
                                const channel_list_t *channels,
                                epg_list_t *epg,
@@ -6855,14 +7228,21 @@ static bool write_sweep_channel_list(const char *path,
     if (fputs("<ch_List>\n", file) == EOF) goto fail;
     for (i = 0U; i < list->count; ++i) {
         const channel_t *ch = &list->items[i];
+        char frequency_text[16];
+        snprintf(frequency_text, sizeof(frequency_text), "%s",
+                 ch->satip_freq[0] != '\0' ? ch->satip_freq : "");
+        if (frequency_text[0] == '\0') {
+            snprintf(frequency_text, sizeof(frequency_text), "%u",
+                     (unsigned)ch->frequency_mhz);
+        }
         if (fprintf(file,
                     "<ch type=\"%s\" pol=\"%c\" sym=\"%u\" "
-                    "s_id=\"%u\" ts_id=\"%u\" freq=\"%u\" ",
+                    "s_id=\"%u\" ts_id=\"%u\" freq=\"%s\" ",
                     ch->type, ch->polarization,
                     (unsigned)ch->symbol_rate_ks,
                     (unsigned)ch->service_id,
                     (unsigned)ch->transport_stream_id,
-                    (unsigned)ch->frequency_mhz) < 0) goto fail;
+                    frequency_text) < 0) goto fail;
         if (ch->have_program_index &&
             fprintf(file, "prog_idx=\"%u\" ",
                     (unsigned)ch->program_index) < 0) goto fail;
@@ -6872,7 +7252,20 @@ static bool write_sweep_channel_list(const char *path,
             fprintf(file, "\" fta=\"%u\" epg_id=\"",
                     ch->fta ? 1U : 0U) < 0 ||
             !xml_write_escaped(file, ch->epg_id) ||
-            fputs("\" />\n", file) == EOF) goto fail;
+            fputs("\"", file) == EOF) goto fail;
+        if (ch->msys[0] != '\0' && strcmp(ch->msys, "auto") != 0 &&
+            fprintf(file, " msys=\"%s\"", ch->msys) < 0) goto fail;
+        if (ch->mtype[0] != '\0' &&
+            fprintf(file, " mtype=\"%s\"", ch->mtype) < 0) goto fail;
+        if (ch->ro[0] != '\0' &&
+            fprintf(file, " ro=\"%s\"", ch->ro) < 0) goto fail;
+        if (ch->plts[0] != '\0' &&
+            fprintf(file, " plts=\"%s\"", ch->plts) < 0) goto fail;
+        if (ch->fec[0] != '\0' &&
+            fprintf(file, " fec=\"%s\"", ch->fec) < 0) goto fail;
+        if (ch->pids[0] != '\0' && strcmp(ch->pids, "all") != 0 &&
+            fprintf(file, " pids=\"%s\"", ch->pids) < 0) goto fail;
+        if (fputs(" />\n", file) == EOF) goto fail;
     }
     if (fputs("</ch_List>\n", file) == EOF ||
         fflush(file) != 0 || fclose(file) != 0) goto fail_closed;
@@ -6910,6 +7303,1364 @@ static void sweep_count_channel_types(const channel_list_t *list,
     *tv_count = tv;
     *radio_count = radio;
 }
+
+#define SATIP_SCAN_MAX_PROGRAMS 512U
+#define SATIP_SCAN_MAX_STREAM_PIDS 64U
+#define SATIP_SCAN_MAX_CA_PIDS 16U
+#define SATIP_PSI_SECTION_MAX 4096U
+#define SATIP_SCAN_DWELL_MIN_MS 1800U
+#define SATIP_SCAN_DWELL_MAX_MS 8000U
+#define SATIP_DIGIBIT_MAX_PIDS 32U
+#define SATIP_SCAN_BASE_PIDS 2U
+#define SATIP_SCAN_PMT_BATCH_MAX \
+    (SATIP_DIGIBIT_MAX_PIDS - SATIP_SCAN_BASE_PIDS)
+
+typedef struct {
+    uint16_t service_id;
+    uint16_t pmt_pid;
+    uint16_t pcr_pid;
+    uint16_t stream_pids[SATIP_SCAN_MAX_STREAM_PIDS];
+    size_t stream_pid_count;
+    uint16_t ca_pids[SATIP_SCAN_MAX_CA_PIDS];
+    size_t ca_pid_count;
+    bool pmt_seen;
+    bool has_video;
+    bool has_audio;
+} satip_scan_program_t;
+
+typedef struct {
+    uint16_t service_id;
+    uint8_t service_type;
+    bool free_ca;
+    bool seen;
+    char provider[128];
+    char name[256];
+} satip_scan_service_t;
+
+typedef struct {
+    uint16_t pid;
+    uint8_t data[SATIP_PSI_SECTION_MAX];
+    size_t length;
+    size_t expected;
+    bool active;
+} satip_psi_assembler_t;
+
+typedef struct {
+    uint16_t transport_stream_id;
+    uint16_t original_network_id;
+    bool pat_seen;
+    bool sdt_seen;
+    char selected_msys[8];
+    satip_scan_program_t programs[SATIP_SCAN_MAX_PROGRAMS];
+    size_t program_count;
+    satip_scan_service_t services[SATIP_SCAN_MAX_PROGRAMS];
+    size_t service_count;
+    satip_psi_assembler_t pat;
+    satip_psi_assembler_t sdt;
+    satip_psi_assembler_t pmts[SATIP_SCAN_MAX_PROGRAMS];
+} satip_scan_context_t;
+
+static bool satip_pid_list_add(uint16_t *items, size_t *count,
+                               size_t capacity, uint16_t pid)
+{
+    size_t i;
+    if (pid > 8191U) return false;
+    for (i = 0U; i < *count; ++i) {
+        if (items[i] == pid) return true;
+    }
+    if (*count >= capacity) return false;
+    items[(*count)++] = pid;
+    return true;
+}
+
+static satip_scan_program_t *satip_scan_program(satip_scan_context_t *ctx,
+                                                uint16_t service_id,
+                                                bool create)
+{
+    size_t i;
+    for (i = 0U; i < ctx->program_count; ++i) {
+        if (ctx->programs[i].service_id == service_id)
+            return &ctx->programs[i];
+    }
+    if (!create || ctx->program_count >= SATIP_SCAN_MAX_PROGRAMS) return NULL;
+    memset(&ctx->programs[ctx->program_count], 0,
+           sizeof(ctx->programs[ctx->program_count]));
+    ctx->programs[ctx->program_count].service_id = service_id;
+    ctx->programs[ctx->program_count].pcr_pid = 0x1FFFU;
+    ctx->pmts[ctx->program_count].pid = 0x1FFFU;
+    return &ctx->programs[ctx->program_count++];
+}
+
+static satip_scan_service_t *satip_scan_service(satip_scan_context_t *ctx,
+                                                uint16_t service_id,
+                                                bool create)
+{
+    size_t i;
+    for (i = 0U; i < ctx->service_count; ++i) {
+        if (ctx->services[i].service_id == service_id)
+            return &ctx->services[i];
+    }
+    if (!create || ctx->service_count >= SATIP_SCAN_MAX_PROGRAMS) return NULL;
+    memset(&ctx->services[ctx->service_count], 0,
+           sizeof(ctx->services[ctx->service_count]));
+    ctx->services[ctx->service_count].service_id = service_id;
+    return &ctx->services[ctx->service_count++];
+}
+
+static size_t satip_utf8_put(char *out, size_t capacity,
+                             size_t position, uint32_t codepoint)
+{
+    if (codepoint < 0x80U) {
+        if (position + 1U < capacity) out[position++] = (char)codepoint;
+    } else if (codepoint < 0x800U) {
+        if (position + 2U < capacity) {
+            out[position++] = (char)(0xC0U | (codepoint >> 6));
+            out[position++] = (char)(0x80U | (codepoint & 0x3FU));
+        }
+    } else {
+        if (position + 3U < capacity) {
+            out[position++] = (char)(0xE0U | (codepoint >> 12));
+            out[position++] = (char)(0x80U | ((codepoint >> 6) & 0x3FU));
+            out[position++] = (char)(0x80U | (codepoint & 0x3FU));
+        }
+    }
+    return position;
+}
+
+static uint32_t satip_combined_latin(uint8_t accent, uint8_t letter)
+{
+    if (accent == 0xC8U) {
+        switch (letter) {
+        case 'A': return 0x00C4U; case 'E': return 0x00CBU;
+        case 'I': return 0x00CFU; case 'O': return 0x00D6U;
+        case 'U': return 0x00DCU; case 'a': return 0x00E4U;
+        case 'e': return 0x00EBU; case 'i': return 0x00EFU;
+        case 'o': return 0x00F6U; case 'u': return 0x00FCU;
+        case 'y': return 0x00FFU; default: break;
+        }
+    } else if (accent == 0xC2U) {
+        switch (letter) {
+        case 'A': return 0x00C1U; case 'E': return 0x00C9U;
+        case 'I': return 0x00CDU; case 'O': return 0x00D3U;
+        case 'U': return 0x00DAU; case 'a': return 0x00E1U;
+        case 'e': return 0x00E9U; case 'i': return 0x00EDU;
+        case 'o': return 0x00F3U; case 'u': return 0x00FAU;
+        default: break;
+        }
+    } else if (accent == 0xC1U) {
+        switch (letter) {
+        case 'A': return 0x00C0U; case 'E': return 0x00C8U;
+        case 'I': return 0x00CCU; case 'O': return 0x00D2U;
+        case 'U': return 0x00D9U; case 'a': return 0x00E0U;
+        case 'e': return 0x00E8U; case 'i': return 0x00ECU;
+        case 'o': return 0x00F2U; case 'u': return 0x00F9U;
+        default: break;
+        }
+    }
+    return 0U;
+}
+
+static void satip_decode_dvb_text(const uint8_t *data, size_t length,
+                                  char *output, size_t output_size)
+{
+    size_t i = 0U;
+    size_t out = 0U;
+    if (output_size == 0U) return;
+    output[0] = '\0';
+    if (length > 0U && data[0] < 0x20U) {
+        if (data[0] == 0x10U && length >= 3U) i = 3U;
+        else i = 1U;
+    }
+    while (i < length && out + 1U < output_size) {
+        uint8_t value = data[i++];
+        uint32_t combined;
+        if (value >= 0xC1U && value <= 0xCFU && i < length &&
+            (combined = satip_combined_latin(value, data[i])) != 0U) {
+            ++i;
+            out = satip_utf8_put(output, output_size, out, combined);
+            continue;
+        }
+        if (value < 0x20U || value == 0x7FU) continue;
+        if (value < 0x80U) {
+            output[out++] = (char)value;
+        } else {
+            out = satip_utf8_put(output, output_size, out, (uint32_t)value);
+        }
+    }
+    while (out > 0U && isspace((unsigned char)output[out - 1U])) --out;
+    output[out] = '\0';
+}
+
+static bool satip_stream_type_video(uint8_t type)
+{
+    return type == 0x01U || type == 0x02U || type == 0x10U ||
+           type == 0x1BU || type == 0x24U || type == 0x27U ||
+           type == 0x42U || type == 0xEAU;
+}
+
+static bool satip_stream_type_audio(uint8_t type)
+{
+    return type == 0x03U || type == 0x04U || type == 0x0FU ||
+           type == 0x11U || type == 0x1CU || type == 0x2DU ||
+           type == 0x81U || type == 0x87U;
+}
+
+static void satip_parse_ca_descriptors(satip_scan_program_t *program,
+                                       const uint8_t *data, size_t length)
+{
+    size_t offset = 0U;
+    while (offset + 2U <= length) {
+        const uint8_t tag = data[offset];
+        const size_t descriptor_length = data[offset + 1U];
+        if (offset + 2U + descriptor_length > length) break;
+        if (tag == 0x09U && descriptor_length >= 4U) {
+            const uint16_t pid = (uint16_t)(((uint16_t)(data[offset + 4U] & 0x1FU) << 8) |
+                                            data[offset + 5U]);
+            (void)satip_pid_list_add(program->ca_pids,
+                                     &program->ca_pid_count,
+                                     SATIP_SCAN_MAX_CA_PIDS, pid);
+        }
+        offset += 2U + descriptor_length;
+    }
+}
+
+static void satip_scan_parse_pat(satip_scan_context_t *ctx,
+                                 const uint8_t *section, size_t length)
+{
+    size_t offset;
+    if (length < 12U || section[0] != 0x00U || !(section[5] & 0x01U)) return;
+    ctx->transport_stream_id = (uint16_t)(((uint16_t)section[3] << 8) | section[4]);
+    ctx->pat_seen = true;
+    for (offset = 8U; offset + 4U <= length - 4U; offset += 4U) {
+        const uint16_t service_id = (uint16_t)(((uint16_t)section[offset] << 8) |
+                                               section[offset + 1U]);
+        const uint16_t pid = (uint16_t)(((uint16_t)(section[offset + 2U] & 0x1FU) << 8) |
+                                        section[offset + 3U]);
+        satip_scan_program_t *program;
+        size_t index;
+        if (service_id == 0U) continue;
+        program = satip_scan_program(ctx, service_id, true);
+        if (program == NULL) continue;
+        program->pmt_pid = pid;
+        index = (size_t)(program - ctx->programs);
+        ctx->pmts[index].pid = pid;
+    }
+}
+
+static void satip_scan_parse_sdt(satip_scan_context_t *ctx,
+                                 const uint8_t *section, size_t length)
+{
+    size_t offset = 11U;
+    if (length < 15U || (section[0] != 0x42U && section[0] != 0x46U) ||
+        !(section[5] & 0x01U)) return;
+    ctx->transport_stream_id = (uint16_t)(((uint16_t)section[3] << 8) | section[4]);
+    ctx->original_network_id = (uint16_t)(((uint16_t)section[8] << 8) | section[9]);
+    ctx->sdt_seen = true;
+    while (offset + 5U <= length - 4U) {
+        const uint16_t service_id = (uint16_t)(((uint16_t)section[offset] << 8) |
+                                               section[offset + 1U]);
+        const bool free_ca = (section[offset + 3U] & 0x10U) == 0U;
+        const size_t descriptors_length =
+            ((size_t)(section[offset + 3U] & 0x0FU) << 8) |
+            section[offset + 4U];
+        size_t descriptor_offset = offset + 5U;
+        const size_t descriptor_end = descriptor_offset + descriptors_length;
+        satip_scan_service_t *service;
+        if (descriptor_end > length - 4U) break;
+        service = satip_scan_service(ctx, service_id, true);
+        if (service != NULL) {
+            service->seen = true;
+            service->free_ca = free_ca;
+        }
+        while (service != NULL && descriptor_offset + 2U <= descriptor_end) {
+            const uint8_t tag = section[descriptor_offset];
+            const size_t descriptor_length = section[descriptor_offset + 1U];
+            const uint8_t *descriptor = section + descriptor_offset + 2U;
+            if (descriptor_offset + 2U + descriptor_length > descriptor_end) break;
+            if (tag == 0x48U && descriptor_length >= 3U) {
+                const size_t provider_length = descriptor[1];
+                if (2U + provider_length < descriptor_length) {
+                    const size_t name_length_offset = 2U + provider_length;
+                    const size_t name_length = descriptor[name_length_offset];
+                    service->service_type = descriptor[0];
+                    satip_decode_dvb_text(descriptor + 2U, provider_length,
+                                          service->provider,
+                                          sizeof(service->provider));
+                    if (name_length_offset + 1U + name_length <= descriptor_length) {
+                        satip_decode_dvb_text(descriptor + name_length_offset + 1U,
+                                              name_length, service->name,
+                                              sizeof(service->name));
+                    }
+                }
+            }
+            descriptor_offset += 2U + descriptor_length;
+        }
+        offset = descriptor_end;
+    }
+}
+
+static void satip_scan_parse_pmt(satip_scan_context_t *ctx,
+                                 const uint8_t *section, size_t length)
+{
+    satip_scan_program_t *program;
+    size_t offset;
+    size_t program_info_length;
+    const uint16_t service_id = length >= 5U
+        ? (uint16_t)(((uint16_t)section[3] << 8) | section[4]) : 0U;
+    if (length < 16U || section[0] != 0x02U || !(section[5] & 0x01U)) return;
+    program = satip_scan_program(ctx, service_id, true);
+    if (program == NULL) return;
+    program->pcr_pid = (uint16_t)(((uint16_t)(section[8] & 0x1FU) << 8) |
+                                  section[9]);
+    program_info_length = ((size_t)(section[10] & 0x0FU) << 8) | section[11];
+    if (12U + program_info_length > length - 4U) return;
+    satip_parse_ca_descriptors(program, section + 12U, program_info_length);
+    offset = 12U + program_info_length;
+    while (offset + 5U <= length - 4U) {
+        const uint8_t stream_type = section[offset];
+        const uint16_t pid = (uint16_t)(((uint16_t)(section[offset + 1U] & 0x1FU) << 8) |
+                                        section[offset + 2U]);
+        const size_t info_length = ((size_t)(section[offset + 3U] & 0x0FU) << 8) |
+                                   section[offset + 4U];
+        if (offset + 5U + info_length > length - 4U) break;
+        (void)satip_pid_list_add(program->stream_pids,
+                                 &program->stream_pid_count,
+                                 SATIP_SCAN_MAX_STREAM_PIDS, pid);
+        program->has_video = program->has_video || satip_stream_type_video(stream_type);
+        program->has_audio = program->has_audio || satip_stream_type_audio(stream_type);
+        satip_parse_ca_descriptors(program, section + offset + 5U, info_length);
+        offset += 5U + info_length;
+    }
+    program->pmt_seen = true;
+}
+
+static void satip_scan_section(satip_scan_context_t *ctx, uint16_t pid,
+                               const uint8_t *section, size_t length)
+{
+    if (pid == 0U) satip_scan_parse_pat(ctx, section, length);
+    else if (pid == 17U) satip_scan_parse_sdt(ctx, section, length);
+    else satip_scan_parse_pmt(ctx, section, length);
+}
+
+static void satip_psi_append(satip_scan_context_t *ctx,
+                             satip_psi_assembler_t *assembler,
+                             const uint8_t *data, size_t length)
+{
+    size_t take;
+    while (length > 0U && assembler->active) {
+        take = assembler->expected - assembler->length;
+        if (take > length) take = length;
+        memcpy(assembler->data + assembler->length, data, take);
+        assembler->length += take;
+        data += take;
+        length -= take;
+        if (assembler->length == assembler->expected) {
+            satip_scan_section(ctx, assembler->pid,
+                               assembler->data, assembler->length);
+            assembler->active = false;
+            assembler->length = 0U;
+            assembler->expected = 0U;
+        }
+    }
+}
+
+static void satip_psi_start_sections(satip_scan_context_t *ctx,
+                                     satip_psi_assembler_t *assembler,
+                                     const uint8_t *data, size_t length)
+{
+    while (length >= 3U) {
+        size_t section_length;
+        size_t total;
+        if (data[0] == 0xFFU) return;
+        section_length = ((size_t)(data[1] & 0x0FU) << 8) | data[2];
+        total = 3U + section_length;
+        if (total < 4U || total > SATIP_PSI_SECTION_MAX) return;
+        if (total <= length) {
+            satip_scan_section(ctx, assembler->pid, data, total);
+            data += total;
+            length -= total;
+        } else {
+            memcpy(assembler->data, data, length);
+            assembler->length = length;
+            assembler->expected = total;
+            assembler->active = true;
+            return;
+        }
+    }
+}
+
+static satip_psi_assembler_t *satip_scan_assembler(satip_scan_context_t *ctx,
+                                                   uint16_t pid)
+{
+    size_t i;
+    if (pid == 0U) return &ctx->pat;
+    if (pid == 17U) return &ctx->sdt;
+    for (i = 0U; i < ctx->program_count; ++i) {
+        if (ctx->pmts[i].pid == pid) return &ctx->pmts[i];
+    }
+    return NULL;
+}
+
+static void satip_scan_ts_packet(satip_scan_context_t *ctx,
+                                 const uint8_t packet[TS_PACKET_SIZE])
+{
+    const bool payload_start = (packet[1] & 0x40U) != 0U;
+    const uint16_t pid = (uint16_t)(((uint16_t)(packet[1] & 0x1FU) << 8) |
+                                    packet[2]);
+    const unsigned adaptation = (packet[3] >> 4) & 0x03U;
+    size_t offset = 4U;
+    satip_psi_assembler_t *assembler;
+    const uint8_t *payload;
+    size_t payload_length;
+    if (packet[0] != 0x47U || adaptation == 0U || adaptation == 2U) return;
+    if (adaptation == 3U) {
+        if (offset >= TS_PACKET_SIZE) return;
+        offset += 1U + packet[offset];
+        if (offset >= TS_PACKET_SIZE) return;
+    }
+    assembler = satip_scan_assembler(ctx, pid);
+    if (assembler == NULL) return;
+    assembler->pid = pid;
+    payload = packet + offset;
+    payload_length = TS_PACKET_SIZE - offset;
+    if (payload_start) {
+        size_t pointer;
+        if (payload_length == 0U) return;
+        pointer = payload[0];
+        ++payload;
+        --payload_length;
+        if (pointer > payload_length) {
+            assembler->active = false;
+            return;
+        }
+        if (assembler->active && pointer > 0U)
+            satip_psi_append(ctx, assembler, payload, pointer);
+        payload += pointer;
+        payload_length -= pointer;
+        assembler->active = false;
+        assembler->length = 0U;
+        assembler->expected = 0U;
+        satip_psi_start_sections(ctx, assembler, payload, payload_length);
+    } else if (assembler->active) {
+        satip_psi_append(ctx, assembler, payload, payload_length);
+    }
+}
+
+static void satip_scan_ts_block(satip_scan_context_t *ctx,
+                                uint8_t *data, size_t length)
+{
+    int offset = find_ts_offset(data, length);
+    size_t position;
+    if (offset < 0) return;
+    for (position = (size_t)offset;
+         position + TS_PACKET_SIZE <= length;
+         position += TS_PACKET_SIZE) {
+        satip_scan_ts_packet(ctx, data + position);
+    }
+}
+
+static bool satip_scan_pmt_range_complete(const satip_scan_context_t *ctx,
+                                          size_t first, size_t count)
+{
+    size_t i;
+    const size_t end = first + count;
+    if (count == 0U || first >= ctx->program_count ||
+        end > ctx->program_count) {
+        return false;
+    }
+    for (i = first; i < end; ++i) {
+        if (!ctx->programs[i].pmt_seen) return false;
+    }
+    return true;
+}
+
+static void satip_scan_reset_assemblers(satip_scan_context_t *ctx)
+{
+    size_t i;
+    ctx->pat.active = false;
+    ctx->pat.length = 0U;
+    ctx->pat.expected = 0U;
+    ctx->sdt.active = false;
+    ctx->sdt.length = 0U;
+    ctx->sdt.expected = 0U;
+    for (i = 0U; i < ctx->program_count; ++i) {
+        ctx->pmts[i].active = false;
+        ctx->pmts[i].length = 0U;
+        ctx->pmts[i].expected = 0U;
+    }
+}
+
+static bool satip_scan_receive_phase(satip_session_t *session,
+                                     satip_scan_context_t *ctx,
+                                     unsigned dwell_ms,
+                                     bool discovery_phase,
+                                     size_t first_program,
+                                     size_t program_count)
+{
+    uint8_t block[65536];
+    const double deadline = monotonic_seconds() +
+        (double)dwell_ms / 1000.0;
+    double completed_at = 0.0;
+
+    while (g_running && monotonic_seconds() < deadline) {
+        socket_io_t received;
+        int ready;
+        bool complete;
+        if (session->pending_length == 0U) {
+            ready = satip_wait_readable(session->rtp, 250);
+            if (ready < 0) return false;
+            if (ready == 0) continue;
+        }
+        received = satip_session_receive(session, block, sizeof(block));
+        if (received <= 0) continue;
+        satip_scan_ts_block(ctx, block, (size_t)received);
+        complete = discovery_phase
+            ? (ctx->pat_seen && ctx->sdt_seen)
+            : satip_scan_pmt_range_complete(ctx, first_program,
+                                            program_count);
+        if (complete) {
+            if (completed_at == 0.0) completed_at = monotonic_seconds();
+            if (monotonic_seconds() - completed_at >= 0.35) break;
+        }
+    }
+    return true;
+}
+
+static bool satip_scan_build_pmt_batch(const satip_scan_context_t *ctx,
+                                       size_t first, size_t count,
+                                       char output[512])
+{
+    size_t i;
+    size_t length;
+    int n;
+    if (count == 0U || first >= ctx->program_count ||
+        first + count > ctx->program_count ||
+        count > SATIP_SCAN_PMT_BATCH_MAX) {
+        return false;
+    }
+    snprintf(output, 512U, "%s", "0,17");
+    length = strlen(output);
+    for (i = first; i < first + count; ++i) {
+        n = snprintf(output + length, 512U - length, ",%u",
+                     (unsigned)ctx->programs[i].pmt_pid);
+        if (n < 0 || (size_t)n >= 512U - length) return false;
+        length += (size_t)n;
+    }
+    return true;
+}
+
+static bool satip_scan_build_pids(const satip_scan_program_t *program,
+                                  char output[512])
+{
+    uint16_t seen[128];
+    size_t seen_count = 0U;
+    size_t length = 0U;
+    size_t i;
+    output[0] = '\0';
+#define ADD_SCAN_PID(value) do { \
+    size_t before = seen_count; \
+    if (!satip_pid_list_add(seen, &seen_count, 128U, (uint16_t)(value))) return false; \
+    if (seen_count != before) { \
+        int n = snprintf(output + length, 512U - length, length == 0U ? "%u" : ",%u", (unsigned)(value)); \
+        if (n < 0 || (size_t)n >= 512U - length) return false; \
+        length += (size_t)n; \
+    } \
+} while (0)
+    ADD_SCAN_PID(0U);
+    ADD_SCAN_PID(1U);
+    ADD_SCAN_PID(17U);
+    ADD_SCAN_PID(18U);
+    ADD_SCAN_PID(20U);
+    ADD_SCAN_PID(program->pmt_pid);
+    if (program->pcr_pid != 0x1FFFU) ADD_SCAN_PID(program->pcr_pid);
+    for (i = 0U; i < program->ca_pid_count; ++i) ADD_SCAN_PID(program->ca_pids[i]);
+    for (i = 0U; i < program->stream_pid_count; ++i) ADD_SCAN_PID(program->stream_pids[i]);
+#undef ADD_SCAN_PID
+    return output[0] != '\0';
+}
+
+static bool satip_scan_service_type(const satip_scan_program_t *program,
+                                    const satip_scan_service_t *service,
+                                    char output[8])
+{
+    const uint8_t type = service != NULL ? service->service_type : 0U;
+    if (type == 0x02U || type == 0x0AU ||
+        (!program->has_video && program->has_audio)) {
+        snprintf(output, 8U, "%s", "RADIO");
+        return true;
+    }
+    if (program->has_video || type == 0x01U || type == 0x11U ||
+        type == 0x16U || type == 0x19U || type == 0x1FU ||
+        type == 0x20U || type == 0x21U || type == 0x22U) {
+        snprintf(output, 8U, "%s", "TV");
+        return true;
+    }
+    return false;
+}
+
+static bool satip_scan_collect_transponder(const options_t *opt,
+                                           const satellite_transponder_t *tp,
+                                           channel_list_t *found,
+                                           size_t *added)
+{
+    satip_session_t session;
+    channel_t tune;
+    satip_scan_context_t *ctx;
+    tune_result_t tune_result;
+    unsigned dwell_ms;
+    size_t i;
+    size_t batch_first;
+    bool result = false;
+    *added = 0U;
+    memset(&tune, 0, sizeof(tune));
+    ctx = (satip_scan_context_t *)calloc(1U, sizeof(*ctx));
+    if (ctx == NULL) {
+        fprintf(stderr, "SAT>IP scan: out of memory allocating PSI context.\n");
+        return false;
+    }
+    satip_session_init(&session);
+    ctx->pat.pid = 0U;
+    ctx->sdt.pid = 17U;
+    tune.frequency_mhz = tp->frequency_mhz;
+    snprintf(tune.satip_freq, sizeof(tune.satip_freq), "%s",
+             tp->satip_freq[0] != '\0' ? tp->satip_freq : "");
+    tune.symbol_rate_ks = tp->symbol_rate_ks;
+    tune.polarization = tp->polarization;
+    satip_channel_defaults(&tune);
+    snprintf(tune.msys, sizeof(tune.msys), "%s",
+             tp->msys[0] != '\0' ? tp->msys : "auto");
+    snprintf(tune.mtype, sizeof(tune.mtype), "%s", tp->mtype);
+    snprintf(tune.ro, sizeof(tune.ro), "%s", tp->ro);
+    snprintf(tune.plts, sizeof(tune.plts), "%s", tp->plts);
+    snprintf(tune.fec, sizeof(tune.fec), "%s", tp->fec);
+    snprintf(tune.pids, sizeof(tune.pids), "%s", "0,17");
+
+    tune_result = satip_session_start(&session, opt, &tune);
+    if (tune_result == TUNE_RESULT_NO_LOCK) { result = true; goto cleanup; }
+    if (tune_result != TUNE_RESULT_OK) goto cleanup;
+    snprintf(ctx->selected_msys, sizeof(ctx->selected_msys), "%s",
+             session.selected_msys);
+    dwell_ms = opt->wait_ms > 0 ? (unsigned)opt->wait_ms : SATIP_SCAN_DWELL_MIN_MS;
+    if (dwell_ms < SATIP_SCAN_DWELL_MIN_MS) dwell_ms = SATIP_SCAN_DWELL_MIN_MS;
+    if (dwell_ms > SATIP_SCAN_DWELL_MAX_MS) dwell_ms = SATIP_SCAN_DWELL_MAX_MS;
+    if (!satip_scan_receive_phase(&session, ctx, dwell_ms, true, 0U, 0U)) {
+        satip_session_stop(&session, true);
+        goto cleanup;
+    }
+    satip_session_stop(&session, true);
+
+    if (!ctx->pat_seen || ctx->program_count == 0U) {
+        if (opt->verbose) {
+            printf("SAT>IP scan %u MHz: no PAT/services received.\n",
+                   (unsigned)tp->frequency_mhz);
+        }
+        result = true;
+        goto cleanup;
+    }
+
+    snprintf(tune.msys, sizeof(tune.msys), "%s",
+             ctx->selected_msys[0] != '\0' ? ctx->selected_msys : "auto");
+    for (batch_first = 0U; batch_first < ctx->program_count;
+         batch_first += SATIP_SCAN_PMT_BATCH_MAX) {
+        size_t batch_count = ctx->program_count - batch_first;
+        if (batch_count > SATIP_SCAN_PMT_BATCH_MAX)
+            batch_count = SATIP_SCAN_PMT_BATCH_MAX;
+        if (!satip_scan_build_pmt_batch(ctx, batch_first, batch_count,
+                                        tune.pids)) {
+            goto cleanup;
+        }
+        satip_scan_reset_assemblers(ctx);
+        satip_session_init(&session);
+        tune_result = satip_session_start(&session, opt, &tune);
+        if (tune_result == TUNE_RESULT_NO_LOCK) {
+            if (opt->verbose) {
+                printf("SAT>IP scan %u MHz: PMT batch %zu did not lock.\n",
+                       (unsigned)tp->frequency_mhz,
+                       batch_first / SATIP_SCAN_PMT_BATCH_MAX + 1U);
+            }
+            continue;
+        }
+        if (tune_result != TUNE_RESULT_OK) goto cleanup;
+        if (!satip_scan_receive_phase(&session, ctx, dwell_ms, false,
+                                      batch_first, batch_count)) {
+            satip_session_stop(&session, true);
+            goto cleanup;
+        }
+        satip_session_stop(&session, true);
+    }
+
+    for (i = 0U; i < ctx->program_count; ++i) {
+        const satip_scan_program_t *program = &ctx->programs[i];
+        const satip_scan_service_t *service = satip_scan_service(
+            ctx, program->service_id, false);
+        channel_t channel;
+        size_t before;
+        if (!program->pmt_seen) continue;
+        memset(&channel, 0, sizeof(channel));
+        if (!satip_scan_service_type(program, service, channel.type)) continue;
+        channel.polarization = tp->polarization;
+        channel.symbol_rate_ks = tp->symbol_rate_ks;
+        channel.service_id = program->service_id;
+        channel.frequency_mhz = tp->frequency_mhz;
+        snprintf(channel.satip_freq, sizeof(channel.satip_freq), "%s",
+                 tp->satip_freq);
+        channel.transport_stream_id = ctx->transport_stream_id;
+        channel.fta = service == NULL ? true : service->free_ca;
+        snprintf(channel.msys, sizeof(channel.msys), "%s",
+                 ctx->selected_msys[0] != '\0' ? ctx->selected_msys : "auto");
+        snprintf(channel.mtype, sizeof(channel.mtype), "%s", tp->mtype);
+        snprintf(channel.ro, sizeof(channel.ro), "%s", tp->ro);
+        snprintf(channel.plts, sizeof(channel.plts), "%s", tp->plts);
+        snprintf(channel.fec, sizeof(channel.fec), "%s", tp->fec);
+        if (!satip_scan_build_pids(program, channel.pids))
+            snprintf(channel.pids, sizeof(channel.pids), "%s", "all");
+        if (service != NULL && service->name[0] != '\0') {
+            snprintf(channel.name, sizeof(channel.name), "%s", service->name);
+        } else {
+            snprintf(channel.name, sizeof(channel.name), "Service %u",
+                     (unsigned)program->service_id);
+        }
+        snprintf(channel.epg_id, sizeof(channel.epg_id), "%u.%u.%u",
+                 (unsigned)ctx->original_network_id,
+                 (unsigned)ctx->transport_stream_id,
+                 (unsigned)program->service_id);
+        before = found->count;
+        if (!sweep_append_channel(found, &channel)) goto cleanup;
+        if (found->count > before) ++*added;
+    }
+    result = true;
+
+cleanup:
+    satip_session_stop(&session, true);
+    free(ctx);
+    return result;
+}
+
+#define SATIP_EPG_PID 18U
+#define SATIP_EPG_WORKAROUND_PID 21U
+#define SATIP_EPG_DWELL_MIN_MS 5000U
+#define SATIP_EPG_DWELL_MAX_MS 30000U
+#define SATIP_EPG_PAST_RETENTION_SECONDS (6LL * 3600LL)
+#define SATIP_EPG_FUTURE_LIMIT_SECONDS (16LL * 86400LL)
+
+typedef struct {
+    const channel_list_t *channels;
+    epg_list_t *events;
+    size_t *capacity;
+    bool *channel_seen;
+    satip_psi_assembler_t eit;
+    size_t sections_seen;
+    size_t events_seen;
+    bool allocation_failed;
+} satip_epg_context_t;
+
+static bool satip_channel_identity(const channel_t *channel,
+                                   uint16_t *original_network_id,
+                                   uint16_t *transport_stream_id,
+                                   uint16_t *service_id)
+{
+    unsigned onid, tsid, sid;
+    if (channel == NULL ||
+        sscanf(channel->epg_id, "%u.%u.%u", &onid, &tsid, &sid) != 3 ||
+        onid > 65535U || tsid > 65535U || sid > 65535U) {
+        return false;
+    }
+    *original_network_id = (uint16_t)onid;
+    *transport_stream_id = (uint16_t)tsid;
+    *service_id = (uint16_t)sid;
+    return true;
+}
+
+static size_t satip_find_epg_channel(const channel_list_t *channels,
+                                     uint16_t original_network_id,
+                                     uint16_t transport_stream_id,
+                                     uint16_t service_id)
+{
+    size_t i;
+    for (i = 0U; i < channels->count; ++i) {
+        uint16_t onid, tsid, sid;
+        if (satip_channel_identity(&channels->items[i], &onid, &tsid, &sid) &&
+            onid == original_network_id &&
+            tsid == transport_stream_id && sid == service_id) {
+            return i;
+        }
+    }
+    return SIZE_MAX;
+}
+
+static bool satip_bcd_byte(uint8_t value, unsigned *decoded)
+{
+    const unsigned high = (unsigned)(value >> 4);
+    const unsigned low = (unsigned)(value & 0x0FU);
+    if (high > 9U || low > 9U) return false;
+    *decoded = high * 10U + low;
+    return true;
+}
+
+static bool satip_dvb_datetime(const uint8_t data[5], int64_t *utc)
+{
+    const uint16_t mjd = (uint16_t)(((uint16_t)data[0] << 8) | data[1]);
+    const int64_t mjd_epoch = days_from_civil(1858, 11U, 17U);
+    unsigned hour, minute, second;
+    if ((data[0] == 0xFFU && data[1] == 0xFFU) ||
+        !satip_bcd_byte(data[2], &hour) ||
+        !satip_bcd_byte(data[3], &minute) ||
+        !satip_bcd_byte(data[4], &second) ||
+        hour > 23U || minute > 59U || second > 59U) {
+        return false;
+    }
+    *utc = (mjd_epoch + (int64_t)mjd) * 86400LL +
+           (int64_t)hour * 3600LL + (int64_t)minute * 60LL +
+           (int64_t)second;
+    return true;
+}
+
+static bool satip_dvb_duration(const uint8_t data[3], int *seconds)
+{
+    unsigned hour, minute, second;
+    if (!satip_bcd_byte(data[0], &hour) ||
+        !satip_bcd_byte(data[1], &minute) ||
+        !satip_bcd_byte(data[2], &second) ||
+        minute > 59U || second > 59U || hour > 99U) {
+        return false;
+    }
+    *seconds = (int)(hour * 3600U + minute * 60U + second);
+    return *seconds > 0;
+}
+
+static void satip_append_text(char *destination, size_t capacity,
+                              const char *text)
+{
+    size_t used;
+    size_t available;
+    if (capacity == 0U || text == NULL || *text == '\0') return;
+    used = strlen(destination);
+    if (used >= capacity - 1U) return;
+    if (used > 0U && destination[used - 1U] != ' ') {
+        destination[used++] = ' ';
+        destination[used] = '\0';
+    }
+    available = capacity - used - 1U;
+    if (available > 0U) {
+        size_t copy = strlen(text);
+        if (copy > available) copy = available;
+        memcpy(destination + used, text, copy);
+        destination[used + copy] = '\0';
+    }
+}
+
+static const char *satip_epg_category(uint8_t content_nibble)
+{
+    switch (content_nibble >> 4) {
+    case 0x1U: return "Movie / Drama";
+    case 0x2U: return "News / Current affairs";
+    case 0x3U: return "Show / Game show";
+    case 0x4U: return "Sports";
+    case 0x5U: return "Children / Youth";
+    case 0x6U: return "Music / Ballet / Dance";
+    case 0x7U: return "Arts / Culture";
+    case 0x8U: return "Social / Political / Economics";
+    case 0x9U: return "Education / Science / Factual";
+    case 0xAU: return "Leisure / Hobbies";
+    case 0xBU: return "Special characteristics";
+    case 0xFU: return "User defined";
+    default: return "";
+    }
+}
+
+static void satip_epg_descriptors(epg_program_t *program,
+                                  const uint8_t *data, size_t length)
+{
+    size_t offset = 0U;
+    while (offset + 2U <= length) {
+        const uint8_t tag = data[offset];
+        const size_t descriptor_length = data[offset + 1U];
+        const uint8_t *body = data + offset + 2U;
+        if (offset + 2U + descriptor_length > length) break;
+        if (tag == 0x4DU && descriptor_length >= 5U) {
+            const size_t name_length = body[3];
+            if (4U + name_length < descriptor_length) {
+                const size_t text_length_offset = 4U + name_length;
+                const size_t text_length = body[text_length_offset];
+                char decoded[768];
+                satip_decode_dvb_text(body + 4U, name_length,
+                                      program->title,
+                                      sizeof(program->title));
+                if (text_length_offset + 1U + text_length <= descriptor_length) {
+                    satip_decode_dvb_text(body + text_length_offset + 1U,
+                                          text_length, decoded,
+                                          sizeof(decoded));
+                    snprintf(program->subtitle,
+                             sizeof(program->subtitle), "%.255s", decoded);
+                }
+            }
+        } else if (tag == 0x4EU && descriptor_length >= 6U) {
+            const size_t items_length = body[4];
+            const size_t text_length_offset = 5U + items_length;
+            if (text_length_offset < descriptor_length) {
+                const size_t text_length = body[text_length_offset];
+                if (text_length_offset + 1U + text_length <= descriptor_length) {
+                    char decoded[768];
+                    satip_decode_dvb_text(body + text_length_offset + 1U,
+                                          text_length, decoded,
+                                          sizeof(decoded));
+                    satip_append_text(program->description,
+                                      sizeof(program->description), decoded);
+                }
+            }
+        } else if (tag == 0x54U && descriptor_length >= 2U &&
+                   program->category[0] == '\0') {
+            snprintf(program->category, sizeof(program->category), "%s",
+                     satip_epg_category(body[0]));
+        }
+        offset += 2U + descriptor_length;
+    }
+}
+
+static bool satip_epg_upsert(epg_list_t *list, size_t *capacity,
+                             const epg_program_t *program, bool *inserted)
+{
+    size_t i;
+    *inserted = false;
+    for (i = 0U; i < list->count; ++i) {
+        epg_program_t *existing = &list->items[i];
+        if (existing->start_utc == program->start_utc &&
+            strcmp(existing->channel_id, program->channel_id) == 0) {
+            if (program->stop_utc > existing->start_utc)
+                existing->stop_utc = program->stop_utc;
+            if (program->title[0] != '\0')
+                snprintf(existing->title, sizeof(existing->title), "%s",
+                         program->title);
+            if (program->subtitle[0] != '\0')
+                snprintf(existing->subtitle, sizeof(existing->subtitle), "%s",
+                         program->subtitle);
+            if (program->description[0] != '\0')
+                snprintf(existing->description,
+                         sizeof(existing->description), "%s",
+                         program->description);
+            if (program->category[0] != '\0')
+                snprintf(existing->category, sizeof(existing->category), "%s",
+                         program->category);
+            return true;
+        }
+    }
+    if (!append_epg_program(list, capacity, program)) return false;
+    *inserted = true;
+    return true;
+}
+
+static void satip_epg_parse_eit(satip_epg_context_t *ctx,
+                                const uint8_t *section, size_t length)
+{
+    const uint8_t table_id = length > 0U ? section[0] : 0U;
+    uint16_t service_id;
+    uint16_t transport_stream_id;
+    uint16_t original_network_id;
+    size_t channel_index;
+    size_t offset;
+    const int64_t now = (int64_t)time(NULL);
+    if (length < 18U || table_id < 0x4EU || table_id > 0x6FU ||
+        !(section[5] & 0x01U)) {
+        return;
+    }
+    service_id = read_u16_be(section + 3U);
+    transport_stream_id = read_u16_be(section + 8U);
+    original_network_id = read_u16_be(section + 10U);
+    channel_index = satip_find_epg_channel(ctx->channels,
+                                           original_network_id,
+                                           transport_stream_id,
+                                           service_id);
+    if (channel_index == SIZE_MAX) return;
+    ++ctx->sections_seen;
+    for (offset = 14U; offset + 12U <= length - 4U;) {
+        epg_program_t program;
+        int duration_seconds;
+        const size_t descriptor_length =
+            ((size_t)(section[offset + 10U] & 0x0FU) << 8) |
+            section[offset + 11U];
+        bool inserted;
+        if (offset + 12U + descriptor_length > length - 4U) break;
+        memset(&program, 0, sizeof(program));
+        snprintf(program.channel_id, sizeof(program.channel_id), "%s",
+                 ctx->channels->items[channel_index].epg_id);
+        if (satip_dvb_datetime(section + offset + 2U, &program.start_utc) &&
+            satip_dvb_duration(section + offset + 7U, &duration_seconds)) {
+            program.stop_utc = program.start_utc + duration_seconds;
+            if (program.stop_utc >= now - SATIP_EPG_PAST_RETENTION_SECONDS &&
+                program.start_utc <= now + SATIP_EPG_FUTURE_LIMIT_SECONDS) {
+                satip_epg_descriptors(&program, section + offset + 12U,
+                                      descriptor_length);
+                if (program.title[0] == '\0') {
+                    snprintf(program.title, sizeof(program.title),
+                             "Programme %u", (unsigned)read_u16_be(section + offset));
+                }
+                if (!satip_epg_upsert(ctx->events, ctx->capacity,
+                                      &program, &inserted)) {
+                    ctx->allocation_failed = true;
+                    return;
+                }
+                ctx->channel_seen[channel_index] = true;
+                if (inserted) ++ctx->events_seen;
+            }
+        }
+        offset += 12U + descriptor_length;
+    }
+}
+
+static void satip_epg_psi_append(satip_epg_context_t *ctx,
+                                 const uint8_t *data, size_t length)
+{
+    satip_psi_assembler_t *assembler = &ctx->eit;
+    while (length > 0U && assembler->active) {
+        size_t take = assembler->expected - assembler->length;
+        if (take > length) take = length;
+        memcpy(assembler->data + assembler->length, data, take);
+        assembler->length += take;
+        data += take;
+        length -= take;
+        if (assembler->length == assembler->expected) {
+            satip_epg_parse_eit(ctx, assembler->data, assembler->length);
+            assembler->active = false;
+            assembler->length = 0U;
+            assembler->expected = 0U;
+        }
+    }
+}
+
+static void satip_epg_psi_start(satip_epg_context_t *ctx,
+                                const uint8_t *data, size_t length)
+{
+    satip_psi_assembler_t *assembler = &ctx->eit;
+    while (length >= 3U && !ctx->allocation_failed) {
+        const size_t section_length =
+            ((size_t)(data[1] & 0x0FU) << 8) | data[2];
+        const size_t total = 3U + section_length;
+        if (data[0] == 0xFFU || total < 4U ||
+            total > SATIP_PSI_SECTION_MAX) return;
+        if (total <= length) {
+            satip_epg_parse_eit(ctx, data, total);
+            data += total;
+            length -= total;
+        } else {
+            memcpy(assembler->data, data, length);
+            assembler->length = length;
+            assembler->expected = total;
+            assembler->active = true;
+            return;
+        }
+    }
+}
+
+static void satip_epg_ts_packet(satip_epg_context_t *ctx,
+                                const uint8_t packet[TS_PACKET_SIZE])
+{
+    const bool payload_start = (packet[1] & 0x40U) != 0U;
+    const uint16_t pid = (uint16_t)(((uint16_t)(packet[1] & 0x1FU) << 8) |
+                                    packet[2]);
+    const unsigned adaptation = (packet[3] >> 4) & 0x03U;
+    size_t offset = 4U;
+    const uint8_t *payload;
+    size_t payload_length;
+    satip_psi_assembler_t *assembler = &ctx->eit;
+    if (packet[0] != 0x47U || pid != SATIP_EPG_PID ||
+        adaptation == 0U || adaptation == 2U) return;
+    if (adaptation == 3U) {
+        offset += 1U + packet[offset];
+        if (offset >= TS_PACKET_SIZE) return;
+    }
+    payload = packet + offset;
+    payload_length = TS_PACKET_SIZE - offset;
+    if (payload_start) {
+        size_t pointer;
+        if (payload_length == 0U) return;
+        pointer = payload[0];
+        ++payload;
+        --payload_length;
+        if (pointer > payload_length) {
+            assembler->active = false;
+            return;
+        }
+        if (assembler->active && pointer > 0U)
+            satip_epg_psi_append(ctx, payload, pointer);
+        payload += pointer;
+        payload_length -= pointer;
+        assembler->active = false;
+        assembler->length = 0U;
+        assembler->expected = 0U;
+        satip_epg_psi_start(ctx, payload, payload_length);
+    } else if (assembler->active) {
+        satip_epg_psi_append(ctx, payload, payload_length);
+    }
+}
+
+static void satip_epg_ts_block(satip_epg_context_t *ctx,
+                               uint8_t *data, size_t length)
+{
+    const int sync_offset = find_ts_offset(data, length);
+    size_t position;
+    if (sync_offset < 0) return;
+    for (position = (size_t)sync_offset;
+         position + TS_PACKET_SIZE <= length;
+         position += TS_PACKET_SIZE) {
+        satip_epg_ts_packet(ctx, data + position);
+        if (ctx->allocation_failed) return;
+    }
+}
+
+static bool satip_same_epg_transponder(const channel_t *a,
+                                       const channel_t *b)
+{
+    const bool same_frequency =
+        (a->satip_freq[0] != '\0' && b->satip_freq[0] != '\0')
+            ? strcmp(a->satip_freq, b->satip_freq) == 0
+            : a->frequency_mhz == b->frequency_mhz;
+    return same_frequency &&
+           a->symbol_rate_ks == b->symbol_rate_ks &&
+           a->polarization == b->polarization &&
+           strcmp(a->msys, b->msys) == 0 &&
+           strcmp(a->mtype, b->mtype) == 0 &&
+           strcmp(a->ro, b->ro) == 0 &&
+           strcmp(a->plts, b->plts) == 0 &&
+           strcmp(a->fec, b->fec) == 0;
+}
+
+static bool satip_collect_epg_transponder(const options_t *opt,
+                                          const channel_list_t *channels,
+                                          size_t representative,
+                                          satip_epg_context_t *ctx,
+                                          bool *tuned)
+{
+    satip_session_t session;
+    channel_t tune = channels->items[representative];
+    tune_result_t result;
+    uint8_t block[65536];
+    unsigned dwell_ms;
+    double started;
+    double deadline;
+    double last_new_event;
+    size_t last_event_count;
+    size_t initial_event_count;
+    *tuned = false;
+    snprintf(tune.pids, sizeof(tune.pids), "%u,%u",
+             SATIP_EPG_PID, SATIP_EPG_WORKAROUND_PID);
+    satip_session_init(&session);
+    result = satip_session_start(&session, opt, &tune);
+    if (result == TUNE_RESULT_NO_LOCK) return true;
+    if (result != TUNE_RESULT_OK) return false;
+    *tuned = true;
+    dwell_ms = opt->wait_ms > 0 ? (unsigned)opt->wait_ms :
+                                 SATIP_EPG_DWELL_MIN_MS;
+    if (dwell_ms < SATIP_EPG_DWELL_MIN_MS)
+        dwell_ms = SATIP_EPG_DWELL_MIN_MS;
+    if (dwell_ms > SATIP_EPG_DWELL_MAX_MS)
+        dwell_ms = SATIP_EPG_DWELL_MAX_MS;
+    started = monotonic_seconds();
+    deadline = started + (double)dwell_ms / 1000.0;
+    last_new_event = started;
+    initial_event_count = ctx->events->count;
+    last_event_count = initial_event_count;
+    if (opt->verbose) {
+        printf("SAT>IP EPG: collecting PID 18 for up to %u ms on %s MHz %c.\n",
+               dwell_ms,
+               tune.satip_freq[0] != '\0' ? tune.satip_freq : "?",
+               tune.polarization);
+    }
+    while (g_running && monotonic_seconds() < deadline &&
+           !ctx->allocation_failed) {
+        socket_io_t received;
+        if (session.pending_length == 0U) {
+            int remaining_ms = (int)((deadline - monotonic_seconds()) * 1000.0);
+            int ready;
+            if (remaining_ms < 1) remaining_ms = 1;
+            ready = satip_wait_readable(session.rtp, remaining_ms);
+            if (ready < 0) {
+                satip_session_stop(&session, true);
+                return false;
+            }
+            if (ready == 0) break;
+        }
+        received = satip_session_receive(&session, block, sizeof(block));
+        if (received > 0) {
+            satip_epg_ts_block(ctx, block, (size_t)received);
+            if (ctx->events->count > last_event_count) {
+                last_event_count = ctx->events->count;
+                last_new_event = monotonic_seconds();
+            }
+            if (ctx->events->count > initial_event_count &&
+                monotonic_seconds() - started >= 3.0 &&
+                monotonic_seconds() - last_new_event >= 1.5) {
+                break;
+            }
+        }
+    }
+    satip_session_stop(&session, true);
+    return !ctx->allocation_failed;
+}
+
+static bool satip_device_refresh_epg(const options_t *opt,
+                                     const channel_list_t *channels,
+                                     epg_list_t *epg,
+                                     device_update_state_t *state,
+                                     bool force)
+{
+    epg_list_t fresh;
+    epg_list_t merged;
+    satip_epg_context_t ctx;
+    size_t fresh_capacity = 0U;
+    size_t merged_capacity = 0U;
+    size_t *representatives = NULL;
+    bool *channel_seen = NULL;
+    bool *channel_failed = NULL;
+    size_t representative_count = 0U;
+    size_t successful_transponders = 0U;
+    size_t failed_transponders = 0U;
+    size_t updated_channels = 0U;
+    size_t failed_channels = 0U;
+    size_t i, j;
+    const int64_t now = (int64_t)time(NULL);
+    bool ok = false;
+    (void)force;
+    memset(&fresh, 0, sizeof(fresh));
+    memset(&merged, 0, sizeof(merged));
+    memset(&ctx, 0, sizeof(ctx));
+    state->busy = true;
+    state->last_epg_attempt_utc = now;
+    snprintf(state->last_action, sizeof(state->last_action), "epg");
+    snprintf(state->last_message, sizeof(state->last_message),
+             "Collecting DVB EIT from SAT>IP");
+    if (channels->count == 0U) {
+        snprintf(state->last_message, sizeof(state->last_message),
+                 "SAT>IP EPG requires a scanned channel list");
+        goto cleanup;
+    }
+    representatives = (size_t *)malloc(channels->count * sizeof(*representatives));
+    channel_seen = (bool *)calloc(channels->count, sizeof(*channel_seen));
+    channel_failed = (bool *)calloc(channels->count, sizeof(*channel_failed));
+    if (representatives == NULL || channel_seen == NULL ||
+        channel_failed == NULL) {
+        snprintf(state->last_message, sizeof(state->last_message),
+                 "Out of memory preparing SAT>IP EPG collection");
+        goto cleanup;
+    }
+    for (i = 0U; i < channels->count; ++i) {
+        for (j = 0U; j < representative_count; ++j) {
+            if (satip_same_epg_transponder(&channels->items[i],
+                                           &channels->items[representatives[j]]))
+                break;
+        }
+        if (j == representative_count)
+            representatives[representative_count++] = i;
+    }
+    ctx.channels = channels;
+    ctx.events = &fresh;
+    ctx.capacity = &fresh_capacity;
+    ctx.channel_seen = channel_seen;
+    ctx.eit.pid = SATIP_EPG_PID;
+    printf("SAT>IP EPG: collecting DVB EIT from %zu transponder%s.\n",
+           representative_count, representative_count == 1U ? "" : "s");
+    for (i = 0U; i < representative_count && g_running; ++i) {
+        const size_t representative = representatives[i];
+        bool tuned = false;
+        size_t before = fresh.count;
+        memset(&ctx.eit, 0, sizeof(ctx.eit));
+        ctx.eit.pid = SATIP_EPG_PID;
+        if (!satip_collect_epg_transponder(opt, channels, representative,
+                                           &ctx, &tuned)) {
+            ++failed_transponders;
+            tuned = false;
+        } else if (tuned) {
+            ++successful_transponders;
+        } else {
+            ++failed_transponders;
+        }
+        if (!tuned) {
+            for (j = 0U; j < channels->count; ++j) {
+                if (satip_same_epg_transponder(&channels->items[j],
+                                               &channels->items[representative]))
+                    channel_failed[j] = true;
+            }
+        }
+        printf("SAT>IP EPG %zu/%zu: %s MHz %c, %zu new programme%s.\n",
+               i + 1U, representative_count,
+               channels->items[representative].satip_freq[0] != '\0'
+                   ? channels->items[representative].satip_freq : "?",
+               channels->items[representative].polarization,
+               fresh.count - before,
+               fresh.count - before == 1U ? "" : "s");
+    }
+    if (ctx.allocation_failed) {
+        snprintf(state->last_message, sizeof(state->last_message),
+                 "Out of memory while parsing SAT>IP EPG");
+        goto cleanup;
+    }
+    if (fresh.count == 0U) {
+        snprintf(state->last_message, sizeof(state->last_message),
+                 "SAT>IP EPG returned no DVB EIT programmes");
+        goto cleanup;
+    }
+    for (i = 0U; i < epg->count; ++i) {
+        bool inserted;
+        if (epg->items[i].stop_utc < now - SATIP_EPG_PAST_RETENTION_SECONDS)
+            continue;
+        if (!satip_epg_upsert(&merged, &merged_capacity,
+                              &epg->items[i], &inserted)) goto cleanup;
+    }
+    for (i = 0U; i < fresh.count; ++i) {
+        bool inserted;
+        if (!satip_epg_upsert(&merged, &merged_capacity,
+                              &fresh.items[i], &inserted)) goto cleanup;
+    }
+    if (merged.count > 1U)
+        qsort(merged.items, merged.count, sizeof(merged.items[0]),
+              compare_epg_programs);
+    merged.loaded_utc = now;
+    if (!write_epg_xmltv(opt->epg_path, channels, &merged)) {
+        snprintf(state->last_message, sizeof(state->last_message),
+                 "Could not write SAT>IP XMLTV file");
+        goto cleanup;
+    }
+    for (i = 0U; i < channels->count; ++i) {
+        if (channel_seen[i]) ++updated_channels;
+        else if (channel_failed[i]) ++failed_channels;
+    }
+    free_epg_list(epg);
+    *epg = merged;
+    memset(&merged, 0, sizeof(merged));
+    state->last_epg_success_utc = now;
+    state->last_epg_updated_channels = updated_channels;
+    state->last_epg_failed_channels = failed_channels;
+    state->last_epg_skipped_channels =
+        channels->count - updated_channels - failed_channels;
+    snprintf(state->last_message, sizeof(state->last_message),
+             "SAT>IP EPG complete: %zu programmes, %zu/%zu channels, "
+             "%zu/%zu transponders",
+             fresh.count, updated_channels, channels->count,
+             successful_transponders, representative_count);
+    printf("%s.\n", state->last_message);
+    ok = true;
+
+cleanup:
+    free(representatives);
+    free(channel_seen);
+    free(channel_failed);
+    free_epg_list(&fresh);
+    free_epg_list(&merged);
+    state->busy = false;
+    return ok;
+}
+
+static bool device_refresh_epg(socket_t *control,
+                               const options_t *opt,
+                               const channel_list_t *channels,
+                               epg_list_t *epg,
+                               device_update_state_t *state,
+                               bool force)
+{
+    if (opt->device_backend == DEVICE_BACKEND_SATIP)
+        return satip_device_refresh_epg(opt, channels, epg, state, force);
+    return legacy_device_refresh_epg(control, opt, channels, epg, state, force);
+}
+
 
 static bool device_finish_transponder_sweep(socket_t *control,
                                             const options_t *opt,
@@ -6956,15 +8707,27 @@ static bool device_finish_transponder_sweep(socket_t *control,
 
     if (opt->device_scan_epg_after &&
         !device_refresh_epg(control, opt, channels, epg, state, true)) {
-        memset(tuning, 0, sizeof(*tuning));
-        return false;
+        fprintf(stderr, "%s channel scan completed, but EPG collection failed: %s\n",
+                opt->device_backend == DEVICE_BACKEND_SATIP ? "SAT>IP" : "Receiver",
+                state->last_message);
+        if (opt->device_backend == DEVICE_BACKEND_LEGACY) {
+            memset(tuning, 0, sizeof(*tuning));
+            return false;
+        }
     }
     state->last_scan_success_utc = (int64_t)time(NULL);
     snprintf(state->last_action, sizeof(state->last_action), "scan");
-    snprintf(state->last_message, sizeof(state->last_message),
-             "%s sweep complete: %zu services; %zu EPG channels updated",
-             sweep_label, channels->count,
-             state->last_epg_updated_channels);
+    if (opt->device_backend == DEVICE_BACKEND_SATIP) {
+        snprintf(state->last_message, sizeof(state->last_message),
+                 "%s SAT>IP scan complete: %zu services; %zu EPG channels updated",
+                 sweep_label, channels->count,
+                 state->last_epg_updated_channels);
+    } else {
+        snprintf(state->last_message, sizeof(state->last_message),
+                 "%s sweep complete: %zu services; %zu EPG channels updated",
+                 sweep_label, channels->count,
+                 state->last_epg_updated_channels);
+    }
     state->next_channels_due = monotonic_seconds() +
         (double)opt->device_channels_refresh_minutes * 60.0;
     state->next_epg_due = monotonic_seconds() +
@@ -6972,6 +8735,98 @@ static bool device_finish_transponder_sweep(socket_t *control,
     state->next_scan_due = monotonic_seconds() +
         (double)opt->device_scan_refresh_minutes * 60.0;
     memset(tuning, 0, sizeof(*tuning));
+    return true;
+}
+
+
+static bool satip_scan_step(socket_t *control,
+                            const options_t *opt,
+                            channel_list_t *channels,
+                            epg_list_t *epg,
+                            device_update_state_t *state,
+                            tuning_state_t *tuning)
+{
+    const satellite_transponder_t *tp;
+    size_t added = 0U;
+    unsigned tv_count;
+    unsigned radio_count;
+    const double now = monotonic_seconds();
+    (void)control;
+
+    if (!state->scan_running || !state->scan_transponder_sweep ||
+        state->scan_sweep_index >= state->scan_sweep_total) {
+        return false;
+    }
+    if (now < state->scan_next_poll) return true;
+    tp = &state->scan_sweep_transponders[state->scan_sweep_index];
+    state->scan_frequency_mhz = tp->frequency_mhz;
+    state->scan_symbol_rate_ks = tp->symbol_rate_ks;
+    state->scan_state = 1U;
+    state->scan_progress = state->scan_sweep_total > 0U
+        ? (unsigned)((state->scan_sweep_index * 100U) /
+                     state->scan_sweep_total) : 0U;
+    snprintf(state->last_message, sizeof(state->last_message),
+             "%s SAT>IP scan %zu/%zu: %s MHz %c %u kSym/s %s %s FEC %s",
+             state->scan_sweep_label,
+             state->scan_sweep_index + 1U,
+             state->scan_sweep_total,
+             tp->satip_freq[0] != '\0' ? tp->satip_freq : "?",
+             tp->polarization,
+             (unsigned)tp->symbol_rate_ks,
+             tp->msys[0] != '\0' ? tp->msys : "auto",
+             tp->mtype[0] != '\0' ? tp->mtype : "auto",
+             tp->fec[0] != '\0' ? tp->fec : "auto");
+    printf("%s SAT>IP scan %zu/%zu: %s MHz %c %u kSym/s, "
+           "%s %s, roll-off %s, pilot %s, FEC %s.\n",
+           state->scan_sweep_label,
+           state->scan_sweep_index + 1U,
+           state->scan_sweep_total,
+           tp->satip_freq[0] != '\0' ? tp->satip_freq : "?",
+           tp->polarization,
+           (unsigned)tp->symbol_rate_ks,
+           tp->msys[0] != '\0' ? tp->msys : "auto",
+           tp->mtype[0] != '\0' ? tp->mtype : "auto",
+           tp->ro[0] != '\0' ? tp->ro : "auto",
+           tp->plts[0] != '\0' ? tp->plts : "auto",
+           tp->fec[0] != '\0' ? tp->fec : "auto");
+
+    if (!satip_scan_collect_transponder(opt, tp,
+                                        &state->scan_sweep_channels,
+                                        &added)) {
+        device_scan_mark_stopped(state,
+                                 "SAT>IP scan stopped after an RTSP/RTP error");
+        memset(tuning, 0, sizeof(*tuning));
+        return false;
+    }
+    sweep_count_channel_types(&state->scan_sweep_channels,
+                              &tv_count, &radio_count);
+    state->scan_tv_count = tv_count;
+    state->scan_radio_count = radio_count;
+    printf("%s SAT>IP scan %zu/%zu: added %zu service%s; "
+           "%zu unique services collected.\n",
+           state->scan_sweep_label,
+           state->scan_sweep_index + 1U,
+           state->scan_sweep_total,
+           added, added == 1U ? "" : "s",
+           state->scan_sweep_channels.count);
+
+    ++state->scan_sweep_index;
+    if (state->scan_sweep_index >= state->scan_sweep_total) {
+        state->scan_state = 0U;
+        state->scan_progress = 100U;
+        return device_finish_transponder_sweep(control, opt, channels, epg,
+                                               state, tuning);
+    }
+    state->scan_progress = (unsigned)
+        ((state->scan_sweep_index * 100U) / state->scan_sweep_total);
+    state->scan_next_poll = monotonic_seconds() + 0.05;
+    snprintf(state->last_message, sizeof(state->last_message),
+             "%s SAT>IP scan: %zu/%zu transponders, TV %u, radio %u",
+             state->scan_sweep_label,
+             state->scan_sweep_index,
+             state->scan_sweep_total,
+             state->scan_tv_count,
+             state->scan_radio_count);
     return true;
 }
 
@@ -6997,13 +8852,19 @@ static bool device_scan_step(socket_t *control,
         return true;
     }
     if (now >= state->scan_deadline) {
-        (void)device_send_scan_action(control, opt, DEVICE_SCAN_STOP_ACTION);
+        if (opt->device_backend == DEVICE_BACKEND_LEGACY)
+            (void)device_send_scan_action(control, opt, DEVICE_SCAN_STOP_ACTION);
         device_scan_mark_stopped(state,
-            state->scan_transponder_sweep
-                ? "Full transponder sweep timed out"
-                : "Receiver channel scan timed out");
+            opt->device_backend == DEVICE_BACKEND_SATIP
+                ? "SAT>IP transponder scan timed out"
+                : (state->scan_transponder_sweep
+                    ? "Full transponder sweep timed out"
+                    : "Receiver channel scan timed out"));
         memset(tuning, 0, sizeof(*tuning));
         return false;
+    }
+    if (opt->device_backend == DEVICE_BACKEND_SATIP) {
+        return satip_scan_step(control, opt, channels, epg, state, tuning);
     }
     if (now < state->scan_next_poll) return true;
 
@@ -9969,9 +11830,12 @@ static void handle_admin_post(http_connection_t *connection,
     }
 
     if (opt->device_backend == DEVICE_BACKEND_SATIP &&
-        strncmp(path, "/admin/device/", 14) == 0) {
+        strncmp(path, "/admin/device/", 14) == 0 &&
+        strcmp(path, "/admin/device/scan") != 0 &&
+        strcmp(path, "/admin/device/scan-cancel") != 0 &&
+        strcmp(path, "/admin/device/update-epg") != 0) {
         send_http_error(connection, 501, "Not Implemented",
-                        "SAT>IP receivers do not expose SORALink's proprietary channel database, EPG update, or scan commands. Use the local channels/XMLTV files instead.\n",
+                        "SAT>IP receivers do not expose SORALink's proprietary channel database. Use the SAT>IP software scan for channels; DVB EIT EPG updates are supported separately.\n",
                         false);
         return;
     }
@@ -10237,9 +12101,7 @@ static void handle_admin_post(http_connection_t *connection,
         opt->diseqc_port = diseqc;
         if (opt->device_backend == DEVICE_BACKEND_SATIP) {
             opt->device_channels_update = false;
-            opt->device_epg_update = false;
-            opt->device_update_on_start = false;
-            opt->device_scan_refresh_minutes = 0U;
+            opt->device_scan_mode = DEVICE_SCAN_UI_FULL_MODE;
         }
         updates->next_channels_due = monotonic_seconds() +
             (double)opt->device_channels_refresh_minutes * 60.0;
@@ -10930,19 +12792,137 @@ static bool run_self_tests(void)
         rtp[0] = 0x80U;
         rtp[1] = 33U;
         rtp[12] = 0x47U;
-        TEST_CHECK(parse_device_backend("digibit", &backend) &&
-                   backend == DEVICE_BACKEND_SATIP &&
-                   parse_satip_msys("DVBS2", msys) &&
-                   strcmp(msys, "dvbs2") == 0 &&
-                   parse_satip_pids("0,17,8191", pids) &&
-                   strcmp(pids, "0,17,8191") == 0 &&
-                   !parse_satip_pids("8192", pids),
-                   "SAT>IP backend, delivery-system, and PID parsing");
+        {
+            bool workaround_changed = false;
+            char workaround_pids[512];
+            TEST_CHECK(parse_device_backend("digibit", &backend) &&
+                       backend == DEVICE_BACKEND_SATIP &&
+                       parse_satip_msys("DVBS2", msys) &&
+                       strcmp(msys, "dvbs2") == 0 &&
+                       parse_satip_pids("0,17,8191", pids) &&
+                       strcmp(pids, "0,17,8191") == 0 &&
+                       !parse_satip_pids("8192", pids) &&
+                       satip_apply_low_pid_workaround(
+                           "0,17", workaround_pids, &workaround_changed) &&
+                       workaround_changed &&
+                       strcmp(workaround_pids, "0,17,21") == 0 &&
+                       satip_apply_low_pid_workaround(
+                           "0,17,256", workaround_pids,
+                           &workaround_changed) &&
+                       !workaround_changed &&
+                       strcmp(workaround_pids, "0,17,256") == 0,
+                       "SAT>IP parsing and APK-compatible PID 21 workaround");
+        }
         TEST_CHECK(satip_rtp_payload(rtp, sizeof(rtp),
                                      &rtp_payload, &rtp_payload_length) &&
                    rtp_payload == rtp + 12U &&
                    rtp_payload_length == TS_PACKET_SIZE,
                    "SAT>IP RTP header extraction");
+    }
+
+    {
+        static const uint8_t pat_section[] = {
+            0x00,0xB0,0x0D,0x12,0x34,0xC1,0x00,0x00,
+            0x00,0x64,0xE1,0x00,0x00,0x00,0x00,0x00
+        };
+        static const uint8_t sdt_section[] = {
+            0x42,0xB0,0x21,0x12,0x34,0xC1,0x00,0x00,
+            0x00,0x01,0xFF,0x00,0x64,0xFF,0x80,0x10,
+            0x48,0x0E,0x01,0x04,'T','e','s','t',0x07,
+            'D','e','m','o',' ','T','V',0x00,0x00,0x00,0x00
+        };
+        static const uint8_t pmt_section[] = {
+            0x02,0xB0,0x17,0x00,0x64,0xC1,0x00,0x00,
+            0xE1,0x01,0xF0,0x00,
+            0x1B,0xE1,0x01,0xF0,0x00,
+            0x0F,0xE1,0x02,0xF0,0x00,
+            0x00,0x00,0x00,0x00
+        };
+        satip_scan_context_t scan_ctx;
+        satip_scan_program_t *scan_program;
+        satip_scan_service_t *scan_service;
+        char scan_pids[512];
+        char scan_pmt_batch[512];
+        char scan_type[8];
+        memset(&scan_ctx, 0, sizeof(scan_ctx));
+        scan_ctx.pat.pid = 0U;
+        scan_ctx.sdt.pid = 17U;
+        satip_scan_parse_pat(&scan_ctx, pat_section, sizeof(pat_section));
+        satip_scan_parse_sdt(&scan_ctx, sdt_section, sizeof(sdt_section));
+        satip_scan_parse_pmt(&scan_ctx, pmt_section, sizeof(pmt_section));
+        scan_program = satip_scan_program(&scan_ctx, 100U, false);
+        scan_service = satip_scan_service(&scan_ctx, 100U, false);
+        TEST_CHECK(scan_ctx.pat_seen && scan_ctx.sdt_seen &&
+                   scan_ctx.transport_stream_id == 0x1234U &&
+                   scan_ctx.original_network_id == 1U &&
+                   scan_program != NULL && scan_program->pmt_seen &&
+                   scan_program->pmt_pid == 0x0100U &&
+                   scan_program->pcr_pid == 0x0101U &&
+                   scan_service != NULL &&
+                   strcmp(scan_service->name, "Demo TV") == 0 &&
+                   satip_scan_service_type(scan_program, scan_service,
+                                           scan_type) &&
+                   strcmp(scan_type, "TV") == 0 &&
+                   satip_scan_build_pmt_batch(&scan_ctx, 0U, 1U,
+                                              scan_pmt_batch) &&
+                   strcmp(scan_pmt_batch, "0,17,256") == 0 &&
+                   satip_scan_build_pids(scan_program, scan_pids) &&
+                   strcmp(scan_pids,
+                          "0,1,17,18,20,256,257,258") == 0,
+                   "SAT>IP explicit PID batching and channel discovery");
+    }
+
+
+    {
+        static const uint8_t eit_section[] = {
+            0x4E,0xB0,0x50,0x00,0x64,0xC1,0x00,0x00,
+            0x12,0x34,0x00,0x01,0x00,0x4E,
+            0x00,0x01,0xEF,0x3C,0x20,0x15,0x00,
+            0x00,0x30,0x00,0x80,0x35,
+            0x4D,0x17,'d','e','u',0x08,
+            'D','e','m','o',' ','E','P','G',0x0A,
+            'S','h','o','r','t',' ','t','e','x','t',
+            0x4E,0x16,0x00,'d','e','u',0x00,0x10,
+            'L','o','n','g',' ','d','e','s','c','r','i','p','t','i','o','n',
+            0x54,0x02,0x10,0x00,
+            0x00,0x00,0x00,0x00
+        };
+        channel_t eit_channel;
+        channel_list_t eit_channels;
+        epg_list_t eit_epg;
+        satip_epg_context_t eit_ctx;
+        size_t eit_capacity = 0U;
+        bool eit_seen[1] = {false};
+        const int64_t expected_start =
+            days_from_civil(2026, 7U, 23U) * 86400LL +
+            20LL * 3600LL + 15LL * 60LL;
+        memset(&eit_channel, 0, sizeof(eit_channel));
+        memset(&eit_epg, 0, sizeof(eit_epg));
+        memset(&eit_ctx, 0, sizeof(eit_ctx));
+        snprintf(eit_channel.epg_id, sizeof(eit_channel.epg_id),
+                 "%s", "1.4660.100");
+        snprintf(eit_channel.name, sizeof(eit_channel.name),
+                 "%s", "Demo TV");
+        eit_channels.items = &eit_channel;
+        eit_channels.count = 1U;
+        eit_ctx.channels = &eit_channels;
+        eit_ctx.events = &eit_epg;
+        eit_ctx.capacity = &eit_capacity;
+        eit_ctx.channel_seen = eit_seen;
+        eit_ctx.eit.pid = SATIP_EPG_PID;
+        satip_epg_parse_eit(&eit_ctx, eit_section, sizeof(eit_section));
+        TEST_CHECK(!eit_ctx.allocation_failed && eit_epg.count == 1U &&
+                   eit_seen[0] &&
+                   eit_epg.items[0].start_utc == expected_start &&
+                   eit_epg.items[0].stop_utc == expected_start + 1800LL &&
+                   strcmp(eit_epg.items[0].title, "Demo EPG") == 0 &&
+                   strcmp(eit_epg.items[0].subtitle, "Short text") == 0 &&
+                   strcmp(eit_epg.items[0].description,
+                          "Long description") == 0 &&
+                   strcmp(eit_epg.items[0].category,
+                          "Movie / Drama") == 0,
+                   "SAT>IP DVB EIT programme and descriptor parsing");
+        free_epg_list(&eit_epg);
     }
 
     TEST_CHECK(parse_channel_tag(
@@ -11094,13 +13074,15 @@ static bool run_self_tests(void)
     TEST_CHECK(frame[20] == 0x02 && frame[11] == 17,
                "Device scan-status request asks for 17 data bytes");
     TEST_CHECK(sizeof(astra_19e_transponders) /
-               sizeof(astra_19e_transponders[0]) == 99U,
-               "Astra 19.2E built-in sweep contains 99 transponders");
-    TEST_CHECK(astra_19e_transponders[0].frequency_mhz == 10729U &&
+               sizeof(astra_19e_transponders[0]) == 55U,
+               "Astra 19.2E built-in SAT>IP sweep contains 55 verified transponders");
+    TEST_CHECK(astra_19e_transponders[0].frequency_mhz == 10759U &&
                astra_19e_transponders[0].polarization == 'V' &&
-               astra_19e_transponders[98].frequency_mhz == 12669U &&
-               astra_19e_transponders[98].polarization == 'V',
-               "Astra transponder sweep boundaries are intact");
+               strcmp(astra_19e_transponders[0].msys, "dvbs2") == 0 &&
+               strcmp(astra_19e_transponders[0].fec, "23") == 0 &&
+               astra_19e_transponders[54].frequency_mhz == 12692U &&
+               astra_19e_transponders[54].polarization == 'H',
+               "Astra SAT>IP transponder parameters and boundaries are intact");
 
     {
         const char *table_path = "soralink-selftest-transponders.tmp";
@@ -11111,7 +13093,9 @@ static bool run_self_tests(void)
         bool table_written = false;
         if (table_file != NULL) {
             table_written = fputs(
-                "[test-sat]\n10729,V,23500\n11000 H 22000\n",
+                "[test-sat]\n"
+                "11361.8,H,22000,dvbs2,8psk,0.35,on,23\n"
+                "11000 H 22000\n",
                 table_file) != EOF && fclose(table_file) == 0;
         }
         TEST_CHECK(table_written &&
@@ -11119,11 +13103,40 @@ static bool run_self_tests(void)
                        table_path, "test-sat", &table_items, &table_count,
                        table_message, sizeof(table_message)) &&
                    table_count == 2U &&
-                   table_items[0].frequency_mhz == 10729U &&
-                   table_items[0].polarization == 'V' &&
+                   table_items[0].frequency_mhz == 11362U &&
+                   strcmp(table_items[0].satip_freq, "11361.8") == 0 &&
+                   table_items[0].polarization == 'H' &&
+                   strcmp(table_items[0].mtype, "8psk") == 0 &&
                    table_items[1].frequency_mhz == 11000U &&
                    table_items[1].symbol_rate_ks == 22000U,
                    "Configured full-sweep table parser loads preset sections");
+        free(table_items);
+        table_items = NULL;
+        table_count = 0U;
+
+        table_file = fopen(table_path, "wb");
+        table_written = false;
+        if (table_file != NULL) {
+            table_written = fputs(
+                "[astra-19.2e]\n"
+                "10729,V,23500\n"
+                "11739,V,27500\n",
+                table_file) != EOF && fclose(table_file) == 0;
+        }
+        memset(&tone_test_opt, 0, sizeof(tone_test_opt));
+        tone_test_opt.transponder_table_path = table_path;
+        tone_test_opt.satellite_preset = "astra-19.2e";
+        tone_test_opt.orbital_tenths = 192U;
+        TEST_CHECK(table_written &&
+                   prepare_transponder_sweep(
+                       &tone_test_opt, &table_items, &table_count,
+                       encoded, sizeof(encoded),
+                       table_message, sizeof(table_message)) &&
+                   table_count == 55U &&
+                   strcmp(table_items[30].satip_freq, "11739.0") == 0 &&
+                   strcmp(table_items[30].msys, "dvbs") == 0 &&
+                   strstr(table_message, "lacks full SAT>IP parameters") != NULL,
+                   "Old three-field Astra table falls back to verified full parameters");
         free(table_items);
         remove(table_path);
     }
