@@ -1,0 +1,22 @@
+# TELESTAR DIGIBIT Twin / generic SAT>IP example
+device_type=satip
+device=192.168.1.50
+control_port=554
+satip_source=1
+satip_msys=auto
+
+server=true
+channels=channels.xml
+http_bind=127.0.0.1
+http_port=8080
+max_clients=8
+
+# SAT>IP does not support SORALink's proprietary receiver database/scan API.
+device_channels_update=false
+device_epg_update=false
+device_scan_refresh_minutes=0
+
+# Optional local/XMLTV EPG configuration
+epg=epg.xml
+epg_update=false
+# epg_url=https://example.invalid/guide.xml

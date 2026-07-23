@@ -66,6 +66,7 @@ static void sleep_ms(unsigned milliseconds)
 
 #define DEFAULT_CONTROL_PORT 8802
 #define DEFAULT_STREAM_PORT  8800
+#define DEFAULT_SATIP_PORT   554
 #define HTTP_CLIENT_LIMIT     64
 #define XML_FILE_LIMIT        (64U * 1024U * 1024U)
 #define HTTP_DOWNLOAD_HEADER_LIMIT (64U * 1024U)
@@ -92,6 +93,11 @@ typedef enum {
     TUNE_PROGIDX,
     TUNE_DVBS
 } tune_mode_t;
+
+typedef enum {
+    DEVICE_BACKEND_LEGACY = 0,
+    DEVICE_BACKEND_SATIP
+} device_backend_t;
 
 typedef enum {
     TONE_AUTO = 0,
@@ -134,6 +140,10 @@ typedef struct {
     const char *device_ip;
     uint16_t control_port;
     uint16_t stream_port;
+    device_backend_t device_backend;
+    bool control_port_explicit;
+    uint32_t satip_source;
+    char satip_msys[8];
     const char *vlc_ip;
     uint16_t vlc_port;
     tune_mode_t tune_mode;
@@ -225,6 +235,8 @@ typedef struct {
     uint32_t lcn;
     uint32_t program_index;
     uint32_t transport_stream_id;
+    char msys[8];
+    char pids[512];
     bool have_program_index;
     bool fta;
     char name[256];
@@ -311,6 +323,28 @@ typedef enum {
     TUNE_RESULT_CONTROL_ERROR
 } tune_result_t;
 
+typedef struct {
+    socket_t rtsp;
+    socket_t rtp;
+    socket_t rtcp;
+    unsigned cseq;
+    char session_id[128];
+    char stream_url[4096];
+    char selected_msys[8];
+    double last_keepalive;
+    bool active;
+    uint8_t pending_packet[2048];
+    size_t pending_length;
+} satip_session_t;
+
+typedef struct {
+    int status_code;
+    char session_id[128];
+    char stream_id[64];
+    char transport[512];
+    char server[256];
+} satip_rtsp_response_t;
+
 #ifdef _WIN32
 static BOOL WINAPI console_handler(DWORD signal_type)
 {
@@ -352,8 +386,11 @@ static void print_usage(const char *program)
         "  Then open in VLC: http://127.0.0.1:8080/playlist.m3u\n\n"
         "Device and tuning options:\n"
         "  --device HOST        Device DNS name, IPv4, or IPv6 address\n"
-        "  --control-port N     Device TCP control port (default 8802)\n"
-        "  --stream-port N      Device UDP stream port (default 8800)\n"
+        "  --device-type TYPE   legacy (WISI/S2D) or satip (DIGIBIT Twin)\n"
+        "  --control-port N     Legacy control or SAT>IP RTSP port (8802/554)\n"
+        "  --stream-port N      Legacy UDP stream port (default 8800)\n"
+        "  --satip-source N     SAT>IP signal source / DiSEqC position (default 1)\n"
+        "  --satip-msys MODE    auto, dvbs, or dvbs2 (default auto)\n"
         "  --progidx N          Tune saved channel/program index N\n"
         "  --freq MHz           Satellite transponder frequency in MHz\n"
         "  --sr N               Symbol rate in kSym/s, e.g. 22000 or 27500\n"
@@ -553,6 +590,73 @@ static char *trim_config_text(char *text)
     return text;
 }
 
+static bool parse_device_backend(const char *text,
+                                 device_backend_t *backend)
+{
+    if (text == NULL || backend == NULL) return false;
+    if (STRNCASECMP(text, "legacy", 7U) == 0 && text[6] == '\0') {
+        *backend = DEVICE_BACKEND_LEGACY;
+        return true;
+    }
+    if ((STRNCASECMP(text, "satip", 6U) == 0 && text[5] == '\0') ||
+        (STRNCASECMP(text, "digibit", 8U) == 0 && text[7] == '\0')) {
+        *backend = DEVICE_BACKEND_SATIP;
+        return true;
+    }
+    return false;
+}
+
+static bool parse_satip_msys(const char *text, char output[8])
+{
+    size_t i;
+    if (text == NULL || output == NULL) return false;
+    if (STRNCASECMP(text, "auto", 5U) == 0 && text[4] == '\0') {
+        snprintf(output, 8U, "%s", "auto");
+        return true;
+    }
+    if (STRNCASECMP(text, "dvbs", 5U) == 0 && text[4] == '\0') {
+        snprintf(output, 8U, "%s", "dvbs");
+        return true;
+    }
+    if (STRNCASECMP(text, "dvbs2", 6U) == 0 && text[5] == '\0') {
+        snprintf(output, 8U, "%s", "dvbs2");
+        return true;
+    }
+    for (i = 0; i < 8U; ++i) output[i] = '\0';
+    return false;
+}
+
+static bool parse_satip_pids(const char *text, char output[512])
+{
+    const char *cursor;
+    size_t length;
+    if (text == NULL || output == NULL) return false;
+    if (STRNCASECMP(text, "all", 4U) == 0 && text[3] == '\0') {
+        snprintf(output, 512U, "%s", "all");
+        return true;
+    }
+    length = strlen(text);
+    if (length == 0U || length >= 512U) return false;
+    cursor = text;
+    while (*cursor != '\0') {
+        uint32_t pid = 0U;
+        bool have_digit = false;
+        while (isdigit((unsigned char)*cursor)) {
+            have_digit = true;
+            pid = pid * 10U + (uint32_t)(*cursor - '0');
+            if (pid > 8191U) return false;
+            ++cursor;
+        }
+        if (!have_digit) return false;
+        if (*cursor == '\0') break;
+        if (*cursor != ',') return false;
+        ++cursor;
+        if (*cursor == '\0') return false;
+    }
+    memmove(output, text, length + 1U);
+    return true;
+}
+
 static bool parse_bool_value(const char *text, bool *value)
 {
     if (STRNCASECMP(text, "true", 5) == 0 && text[4] == '\0') {
@@ -628,8 +732,21 @@ static bool apply_config_option(options_t *opt,
                                  sizeof(opt->text.device_ip), value,
                                  &opt->device_ip, true);
     }
+    if (strcmp(key, "device_type") == 0 ||
+        strcmp(key, "device_backend") == 0) {
+        return parse_device_backend(value, &opt->device_backend);
+    }
     if (strcmp(key, "control_port") == 0) {
-        return parse_port(value, &opt->control_port);
+        if (!parse_port(value, &opt->control_port)) return false;
+        opt->control_port_explicit = true;
+        return true;
+    }
+    if (strcmp(key, "satip_source") == 0) {
+        return parse_u32(value, &opt->satip_source) &&
+               opt->satip_source >= 1U && opt->satip_source <= 255U;
+    }
+    if (strcmp(key, "satip_msys") == 0) {
+        return parse_satip_msys(value, opt->satip_msys);
     }
     if (strcmp(key, "stream_port") == 0) {
         return parse_port(value, &opt->stream_port);
@@ -1093,6 +1210,9 @@ static bool parse_options(int argc, char **argv, options_t *opt)
     memset(opt, 0, sizeof(*opt));
     opt->control_port = DEFAULT_CONTROL_PORT;
     opt->stream_port = DEFAULT_STREAM_PORT;
+    opt->device_backend = DEVICE_BACKEND_LEGACY;
+    opt->satip_source = 1U;
+    snprintf(opt->satip_msys, sizeof(opt->satip_msys), "%s", "auto");
     opt->vlc_ip = "127.0.0.1";
     opt->vlc_port = 1234;
     opt->orbital_tenths = 192;
@@ -1174,9 +1294,26 @@ static bool parse_options(int argc, char **argv, options_t *opt)
             opt->self_test = true;
         } else if (strcmp(arg, "--device") == 0 && i + 1 < argc) {
             opt->device_ip = argv[++i];
+        } else if (strcmp(arg, "--device-type") == 0 && i + 1 < argc) {
+            if (!parse_device_backend(argv[++i], &opt->device_backend)) {
+                fprintf(stderr, "Invalid --device-type value (use legacy or satip).\n");
+                return false;
+            }
         } else if (strcmp(arg, "--control-port") == 0 && i + 1 < argc) {
             if (!parse_port(argv[++i], &opt->control_port)) {
                 fprintf(stderr, "Invalid --control-port value.\n");
+                return false;
+            }
+            opt->control_port_explicit = true;
+        } else if (strcmp(arg, "--satip-source") == 0 && i + 1 < argc) {
+            if (!parse_u32(argv[++i], &opt->satip_source) ||
+                opt->satip_source < 1U || opt->satip_source > 255U) {
+                fprintf(stderr, "Invalid --satip-source value (use 1..255).\n");
+                return false;
+            }
+        } else if (strcmp(arg, "--satip-msys") == 0 && i + 1 < argc) {
+            if (!parse_satip_msys(argv[++i], opt->satip_msys)) {
+                fprintf(stderr, "Invalid --satip-msys value (use auto, dvbs, or dvbs2).\n");
                 return false;
             }
         } else if (strcmp(arg, "--stream-port") == 0 && i + 1 < argc) {
@@ -1477,6 +1614,28 @@ static bool parse_options(int argc, char **argv, options_t *opt)
     if (opt->self_test) {
         return true;
     }
+    if (opt->device_backend == DEVICE_BACKEND_SATIP &&
+        !opt->control_port_explicit) {
+        opt->control_port = DEFAULT_SATIP_PORT;
+    }
+    if (opt->device_backend == DEVICE_BACKEND_SATIP) {
+        if (opt->tune_mode == TUNE_PROGIDX) {
+            fprintf(stderr,
+                    "SAT>IP devices do not support --progidx; use direct DVB-S parameters or server mode.\n");
+            return false;
+        }
+        opt->have_even_key = false;
+        opt->have_odd_key = false;
+        if (opt->device_channels_update || opt->device_epg_update ||
+            opt->device_scan_refresh_minutes > 0U) {
+            fprintf(stderr,
+                    "Warning: native receiver channel/EPG/scan operations are unavailable for SAT>IP; local channel XML and XMLTV remain supported.\n");
+            opt->device_channels_update = false;
+            opt->device_epg_update = false;
+            opt->device_scan_refresh_minutes = 0U;
+        }
+    }
+
     if (opt->device_ip == NULL) {
         fprintf(stderr, "--device is required (or set device= in the config file).\n");
         return false;
@@ -2082,6 +2241,497 @@ static bool recv_all(socket_t sock, uint8_t *data, size_t length)
     }
 
     return true;
+}
+
+
+static socket_t create_udp_socket(int family, int timeout_ms);
+
+static int satip_wait_readable(socket_t sock, int timeout_ms)
+{
+    fd_set read_set;
+    struct timeval timeout;
+    FD_ZERO(&read_set);
+    FD_SET(sock, &read_set);
+    timeout.tv_sec = timeout_ms / 1000;
+    timeout.tv_usec = (timeout_ms % 1000) * 1000;
+#ifdef _WIN32
+    return select(0, &read_set, NULL, NULL, &timeout);
+#else
+    return select(sock + 1, &read_set, NULL, NULL, &timeout);
+#endif
+}
+
+static void satip_session_init(satip_session_t *session)
+{
+    memset(session, 0, sizeof(*session));
+    session->rtsp = SOCKET_INVALID;
+    session->rtp = SOCKET_INVALID;
+    session->rtcp = SOCKET_INVALID;
+    session->cseq = 1U;
+}
+
+static bool satip_header_value(const char *headers,
+                               const char *name,
+                               char *output,
+                               size_t capacity)
+{
+    const size_t name_length = strlen(name);
+    const char *line = headers;
+    if (capacity == 0U) return false;
+    output[0] = '\0';
+    while (line != NULL && *line != '\0') {
+        const char *end = strstr(line, "\r\n");
+        const size_t line_length = end != NULL ? (size_t)(end - line) : strlen(line);
+        if (line_length > name_length && line[name_length] == ':' &&
+            STRNCASECMP(line, name, name_length) == 0) {
+            const char *value = line + name_length + 1U;
+            size_t length;
+            while (*value == ' ' || *value == '\t') ++value;
+            length = line_length - (size_t)(value - line);
+            while (length > 0U &&
+                   (value[length - 1U] == ' ' || value[length - 1U] == '\t')) {
+                --length;
+            }
+            if (length >= capacity) length = capacity - 1U;
+            memcpy(output, value, length);
+            output[length] = '\0';
+            return true;
+        }
+        line = end != NULL ? end + 2 : NULL;
+    }
+    return false;
+}
+
+static bool satip_read_response(socket_t sock,
+                                satip_rtsp_response_t *response,
+                                bool verbose)
+{
+    char buffer[32768];
+    size_t used = 0U;
+    char *header_end;
+    char *space;
+
+    memset(response, 0, sizeof(*response));
+    while (used + 1U < sizeof(buffer)) {
+        const int room = (int)(sizeof(buffer) - used - 1U);
+        const socket_io_t received = socket_recv_bytes(sock, buffer + used, room, 0);
+        if (received == 0) {
+            fprintf(stderr, "SAT>IP RTSP connection closed by server.\n");
+            return false;
+        }
+        if (received < 0) {
+            fprintf(stderr, "SAT>IP RTSP receive failed/timeout: %d\n",
+                    SOCKET_ERROR_CODE());
+            return false;
+        }
+        used += (size_t)received;
+        buffer[used] = '\0';
+        header_end = strstr(buffer, "\r\n\r\n");
+        if (header_end != NULL) break;
+    }
+    if (strstr(buffer, "\r\n\r\n") == NULL) {
+        fprintf(stderr, "SAT>IP RTSP response headers are too large.\n");
+        return false;
+    }
+    if (verbose) printf("SAT>IP RTSP response:\n%s\n", buffer);
+    if (STRNCASECMP(buffer, "RTSP/1.0 ", 9U) != 0 ||
+        (space = strchr(buffer + 9, ' ')) == NULL) {
+        fprintf(stderr, "Malformed SAT>IP RTSP response.\n");
+        return false;
+    }
+    (void)space;
+    response->status_code = atoi(buffer + 9);
+    (void)satip_header_value(buffer, "Session", response->session_id,
+                             sizeof(response->session_id));
+    (void)satip_header_value(buffer, "com.ses.streamID", response->stream_id,
+                             sizeof(response->stream_id));
+    (void)satip_header_value(buffer, "Transport", response->transport,
+                             sizeof(response->transport));
+    (void)satip_header_value(buffer, "Server", response->server,
+                             sizeof(response->server));
+    if (response->session_id[0] != '\0') {
+        char *semicolon = strchr(response->session_id, ';');
+        if (semicolon != NULL) *semicolon = '\0';
+    }
+    return true;
+}
+
+static bool satip_request(satip_session_t *session,
+                          const char *method,
+                          const char *url,
+                          const char *extra_headers,
+                          bool include_session,
+                          satip_rtsp_response_t *response,
+                          bool verbose)
+{
+    char request[4096];
+    int length;
+    const char *extra = extra_headers != NULL ? extra_headers : "";
+    char session_header[256] = "";
+
+    if (include_session && session->session_id[0] != '\0') {
+        snprintf(session_header, sizeof(session_header), "Session: %s\r\n",
+                 session->session_id);
+    }
+    length = snprintf(request, sizeof(request),
+                      "%s %s RTSP/1.0\r\n"
+                      "CSeq: %u\r\n"
+                      "User-Agent: SORALink/1.1\r\n"
+                      "%s%s\r\n",
+                      method, url, session->cseq++, session_header, extra);
+    if (length < 0 || (size_t)length >= sizeof(request)) {
+        fprintf(stderr, "SAT>IP RTSP request is too long.\n");
+        return false;
+    }
+    if (verbose) printf("SAT>IP RTSP request:\n%s", request);
+    if (!send_all(session->rtsp, (const uint8_t *)request, (size_t)length) ||
+        !satip_read_response(session->rtsp, response, verbose)) {
+        return false;
+    }
+    if (response->status_code < 200 || response->status_code >= 300) {
+        fprintf(stderr, "SAT>IP RTSP %s failed with status %d.\n",
+                method, response->status_code);
+        return false;
+    }
+    return true;
+}
+
+static bool satip_bind_udp_pair(int family,
+                                int timeout_ms,
+                                socket_t *rtp,
+                                socket_t *rtcp,
+                                uint16_t *rtp_port)
+{
+    unsigned attempt;
+    *rtp = SOCKET_INVALID;
+    *rtcp = SOCKET_INVALID;
+    *rtp_port = 0U;
+
+    for (attempt = 0U; attempt < 64U; ++attempt) {
+        socket_t first = create_udp_socket(family, timeout_ms);
+        socket_t second = SOCKET_INVALID;
+        uint16_t port = 0U;
+        int bind_result;
+
+        if (first == SOCKET_INVALID) return false;
+        if (family == AF_INET) {
+            struct sockaddr_in address;
+            socklen_t length = (socklen_t)sizeof(address);
+            memset(&address, 0, sizeof(address));
+            address.sin_family = AF_INET;
+            address.sin_addr.s_addr = htonl(INADDR_ANY);
+            address.sin_port = 0;
+            bind_result = bind(first, (const struct sockaddr *)&address,
+                               (socklen_t)sizeof(address));
+            if (bind_result == 0 && getsockname(first,
+                    (struct sockaddr *)&address, &length) == 0) {
+                port = ntohs(address.sin_port);
+            }
+        } else {
+            struct sockaddr_in6 address;
+            socklen_t length = (socklen_t)sizeof(address);
+            memset(&address, 0, sizeof(address));
+            address.sin6_family = AF_INET6;
+            address.sin6_addr = in6addr_any;
+            address.sin6_port = 0;
+            bind_result = bind(first, (const struct sockaddr *)&address,
+                               (socklen_t)sizeof(address));
+            if (bind_result == 0 && getsockname(first,
+                    (struct sockaddr *)&address, &length) == 0) {
+                port = ntohs(address.sin6_port);
+            }
+        }
+        if (bind_result != 0 || port == 0U || (port & 1U) != 0U ||
+            port == 65535U) {
+            CLOSESOCKET(first);
+            continue;
+        }
+
+        second = create_udp_socket(family, timeout_ms);
+        if (second == SOCKET_INVALID) {
+            CLOSESOCKET(first);
+            return false;
+        }
+        if (family == AF_INET) {
+            struct sockaddr_in address;
+            memset(&address, 0, sizeof(address));
+            address.sin_family = AF_INET;
+            address.sin_addr.s_addr = htonl(INADDR_ANY);
+            address.sin_port = htons((uint16_t)(port + 1U));
+            bind_result = bind(second, (const struct sockaddr *)&address,
+                               (socklen_t)sizeof(address));
+        } else {
+            struct sockaddr_in6 address;
+            memset(&address, 0, sizeof(address));
+            address.sin6_family = AF_INET6;
+            address.sin6_addr = in6addr_any;
+            address.sin6_port = htons((uint16_t)(port + 1U));
+            bind_result = bind(second, (const struct sockaddr *)&address,
+                               (socklen_t)sizeof(address));
+        }
+        if (bind_result != 0) {
+            CLOSESOCKET(second);
+            CLOSESOCKET(first);
+            continue;
+        }
+        *rtp = first;
+        *rtcp = second;
+        *rtp_port = port;
+        return true;
+    }
+    fprintf(stderr, "Could not allocate an even SAT>IP RTP/RTCP UDP port pair.\n");
+    return false;
+}
+
+static bool satip_rtp_payload(uint8_t *packet,
+                              size_t packet_length,
+                              uint8_t **payload,
+                              size_t *payload_length)
+{
+    size_t offset;
+    size_t length;
+    unsigned csrc_count;
+
+    if (packet_length >= TS_PACKET_SIZE && packet[0] == 0x47U) {
+        *payload = packet;
+        *payload_length = packet_length;
+        return true;
+    }
+    if (packet_length < 12U || (packet[0] >> 6) != 2U) return false;
+    csrc_count = packet[0] & 0x0FU;
+    offset = 12U + (size_t)csrc_count * 4U;
+    if (offset > packet_length) return false;
+    if ((packet[0] & 0x10U) != 0U) {
+        uint16_t words;
+        if (offset + 4U > packet_length) return false;
+        words = (uint16_t)(((uint16_t)packet[offset + 2U] << 8) |
+                           packet[offset + 3U]);
+        offset += 4U + (size_t)words * 4U;
+        if (offset > packet_length) return false;
+    }
+    length = packet_length - offset;
+    if ((packet[0] & 0x20U) != 0U) {
+        const uint8_t padding = packet[packet_length - 1U];
+        if (padding == 0U || padding > length) return false;
+        length -= padding;
+    }
+    if (length < TS_PACKET_SIZE) return false;
+    *payload = packet + offset;
+    *payload_length = length;
+    return true;
+}
+
+static void satip_session_stop(satip_session_t *session, bool graceful)
+{
+    if (session == NULL) return;
+    if (graceful && session->rtsp != SOCKET_INVALID &&
+        session->stream_url[0] != '\0' && session->session_id[0] != '\0') {
+        satip_rtsp_response_t response;
+        (void)satip_request(session, "TEARDOWN", session->stream_url, NULL,
+                            true, &response, false);
+    }
+    if (session->rtsp != SOCKET_INVALID) CLOSESOCKET(session->rtsp);
+    if (session->rtp != SOCKET_INVALID) CLOSESOCKET(session->rtp);
+    if (session->rtcp != SOCKET_INVALID) CLOSESOCKET(session->rtcp);
+    satip_session_init(session);
+}
+
+static bool satip_probe_server(const options_t *opt)
+{
+    satip_session_t session;
+    satip_rtsp_response_t response;
+    char host[600];
+    char url[1024];
+    bool ok;
+
+    satip_session_init(&session);
+    session.rtsp = connect_tcp(opt->device_ip, opt->control_port,
+                               opt->timeout_ms);
+    if (session.rtsp == SOCKET_INVALID) return false;
+    format_host_for_url(opt->device_ip, host, sizeof(host));
+    snprintf(url, sizeof(url), "rtsp://%s:%u/", host,
+             (unsigned)opt->control_port);
+    ok = satip_request(&session, "OPTIONS", url, NULL, false, &response,
+                       opt->verbose);
+    if (ok) {
+        if (response.server[0] != '\0') {
+            printf("SAT>IP server is reachable (%s).\n", response.server);
+        } else {
+            printf("SAT>IP server is reachable.\n");
+        }
+    }
+    satip_session_stop(&session, false);
+    return ok;
+}
+
+static const char *satip_channel_msys(const options_t *opt,
+                                      const channel_t *channel)
+{
+    if (channel != NULL && strcmp(channel->msys, "auto") != 0) {
+        return channel->msys;
+    }
+    return opt->satip_msys;
+}
+
+static tune_result_t satip_session_start_once(satip_session_t *session,
+                                              const options_t *opt,
+                                              const channel_t *channel,
+                                              const char *msys)
+{
+    endpoint_t server_endpoint;
+    satip_rtsp_response_t response;
+    char host[600];
+    char root_url[1024];
+    char setup_url[2048];
+    char transport[256];
+    uint16_t rtp_port;
+    uint8_t first_packet[2048];
+    socket_io_t received;
+    uint8_t *payload;
+    size_t payload_length;
+    char pol;
+    int ready;
+
+    satip_session_stop(session, false);
+    if (!resolve_endpoint(opt->device_ip, opt->control_port, SOCK_STREAM,
+                          false, &server_endpoint)) {
+        return TUNE_RESULT_CONTROL_ERROR;
+    }
+    if (!satip_bind_udp_pair(server_endpoint.family, opt->timeout_ms,
+                             &session->rtp, &session->rtcp, &rtp_port)) {
+        return TUNE_RESULT_CONTROL_ERROR;
+    }
+    session->rtsp = connect_tcp(opt->device_ip, opt->control_port,
+                                opt->timeout_ms);
+    if (session->rtsp == SOCKET_INVALID) {
+        satip_session_stop(session, false);
+        return TUNE_RESULT_CONTROL_ERROR;
+    }
+
+    format_host_for_url(opt->device_ip, host, sizeof(host));
+    snprintf(root_url, sizeof(root_url), "rtsp://%s:%u/", host,
+             (unsigned)opt->control_port);
+    if (!satip_request(session, "OPTIONS", root_url, NULL, false, &response,
+                       opt->verbose)) {
+        satip_session_stop(session, false);
+        return TUNE_RESULT_CONTROL_ERROR;
+    }
+
+    pol = (char)tolower((unsigned char)channel->polarization);
+    snprintf(setup_url, sizeof(setup_url),
+             "%s?src=%u&freq=%u&pol=%c&msys=%s&sr=%u&pids=%s",
+             root_url, (unsigned)opt->satip_source,
+             (unsigned)channel->frequency_mhz, pol, msys,
+             (unsigned)channel->symbol_rate_ks,
+             channel->pids[0] != '\0' ? channel->pids : "all");
+    snprintf(transport, sizeof(transport),
+             "Transport: RTP/AVP;unicast;client_port=%u-%u\r\n",
+             (unsigned)rtp_port, (unsigned)(rtp_port + 1U));
+    if (!satip_request(session, "SETUP", setup_url, transport, false,
+                       &response, opt->verbose) ||
+        response.session_id[0] == '\0') {
+        fprintf(stderr, "SAT>IP SETUP did not return a session identifier.\n");
+        satip_session_stop(session, false);
+        return TUNE_RESULT_CONTROL_ERROR;
+    }
+    snprintf(session->session_id, sizeof(session->session_id), "%s",
+             response.session_id);
+    if (response.stream_id[0] != '\0') {
+        snprintf(session->stream_url, sizeof(session->stream_url),
+                 "%sstream=%s", root_url, response.stream_id);
+    } else {
+        snprintf(session->stream_url, sizeof(session->stream_url), "%s",
+                 setup_url);
+    }
+    if (!satip_request(session, "PLAY", session->stream_url, NULL, true,
+                       &response, opt->verbose)) {
+        satip_session_stop(session, true);
+        return TUNE_RESULT_CONTROL_ERROR;
+    }
+
+    ready = satip_wait_readable(session->rtp,
+                                opt->timeout_ms < 2000 ? opt->timeout_ms : 2000);
+    if (ready <= 0) {
+        satip_session_stop(session, true);
+        return ready < 0 ? TUNE_RESULT_CONTROL_ERROR : TUNE_RESULT_NO_LOCK;
+    }
+    received = socket_recv_bytes(session->rtp, (char *)first_packet,
+                                 (int)sizeof(first_packet), 0);
+    if (received <= 0 ||
+        !satip_rtp_payload(first_packet, (size_t)received,
+                           &payload, &payload_length) ||
+        payload_length > sizeof(session->pending_packet)) {
+        satip_session_stop(session, true);
+        return TUNE_RESULT_NO_LOCK;
+    }
+    memcpy(session->pending_packet, payload, payload_length);
+    session->pending_length = payload_length;
+    session->active = true;
+    session->last_keepalive = (double)time(NULL);
+    snprintf(session->selected_msys, sizeof(session->selected_msys), "%s",
+             msys);
+    printf("SAT>IP locked %u MHz, %u kSym/s, %c using %s.\n",
+           (unsigned)channel->frequency_mhz,
+           (unsigned)channel->symbol_rate_ks,
+           channel->polarization, msys);
+    return TUNE_RESULT_OK;
+}
+
+static tune_result_t satip_session_start(satip_session_t *session,
+                                         const options_t *opt,
+                                         const channel_t *channel)
+{
+    const char *requested = satip_channel_msys(opt, channel);
+    tune_result_t result;
+    if (strcmp(requested, "auto") != 0) {
+        return satip_session_start_once(session, opt, channel, requested);
+    }
+    result = satip_session_start_once(session, opt, channel, "dvbs2");
+    if (result == TUNE_RESULT_OK) return result;
+    fprintf(stderr, "SAT>IP DVB-S2 attempt did not lock; trying DVB-S.\n");
+    return satip_session_start_once(session, opt, channel, "dvbs");
+}
+
+static bool satip_session_keepalive(satip_session_t *session,
+                                    const options_t *opt)
+{
+    const double now = (double)time(NULL);
+    satip_rtsp_response_t response;
+    if (!session->active || now - session->last_keepalive < 15.0) return true;
+    if (!satip_request(session, "OPTIONS", session->stream_url, NULL, true,
+                       &response, opt->verbose)) {
+        return false;
+    }
+    session->last_keepalive = now;
+    return true;
+}
+
+static socket_io_t satip_session_receive(satip_session_t *session,
+                                         uint8_t *output,
+                                         size_t capacity)
+{
+    uint8_t packet[65536];
+    socket_io_t received;
+    uint8_t *payload;
+    size_t payload_length;
+
+    if (session->pending_length > 0U) {
+        if (session->pending_length > capacity) return -1;
+        memcpy(output, session->pending_packet, session->pending_length);
+        received = (socket_io_t)session->pending_length;
+        session->pending_length = 0U;
+        return received;
+    }
+    received = socket_recv_bytes(session->rtp, (char *)packet,
+                                 (int)sizeof(packet), 0);
+    if (received <= 0) return received;
+    if (!satip_rtp_payload(packet, (size_t)received,
+                           &payload, &payload_length) ||
+        payload_length > capacity) {
+        return -1;
+    }
+    memcpy(output, payload, payload_length);
+    return (socket_io_t)payload_length;
 }
 
 
@@ -3767,6 +4417,135 @@ fail:
     return EXIT_FAILURE;
 }
 
+static int stream_satip_to_vlc(const options_t *opt)
+{
+    satip_session_t session;
+    channel_t channel;
+    socket_t output_udp = SOCKET_INVALID;
+    endpoint_t vlc_endpoint;
+    FILE *dump = NULL;
+    uint8_t payload[65536];
+    stream_keys_t keys;
+    stream_stats_t stats;
+    uint64_t packets = 0U;
+    uint64_t bytes_forwarded = 0U;
+    uint64_t timeouts = 0U;
+    unsigned consecutive_timeouts = 0U;
+    double report_start = monotonic_seconds();
+    char vlc_url_host[512];
+
+    memset(&channel, 0, sizeof(channel));
+    channel.frequency_mhz = opt->frequency_mhz;
+    channel.symbol_rate_ks = opt->symbol_rate_ks;
+    channel.polarization = opt->polarization;
+    channel.service_id = opt->service_id;
+    snprintf(channel.msys, sizeof(channel.msys), "%s", opt->satip_msys);
+    snprintf(channel.pids, sizeof(channel.pids), "%s", "all");
+    snprintf(channel.name, sizeof(channel.name), "Service %u",
+             (unsigned)channel.service_id);
+
+    satip_session_init(&session);
+    memset(&stats, 0, sizeof(stats));
+    stream_keys_init(&keys, opt);
+    if (!resolve_endpoint(opt->vlc_ip, opt->vlc_port, SOCK_DGRAM, false,
+                          &vlc_endpoint)) {
+        return EXIT_FAILURE;
+    }
+    output_udp = create_udp_socket(vlc_endpoint.family, opt->timeout_ms);
+    if (output_udp == SOCKET_INVALID) return EXIT_FAILURE;
+    if (opt->dump_path != NULL) {
+        dump = fopen(opt->dump_path, "wb");
+        if (dump == NULL) {
+            fprintf(stderr, "Cannot open dump file '%s': %s\n",
+                    opt->dump_path, strerror(errno));
+            CLOSESOCKET(output_udp);
+            return EXIT_FAILURE;
+        }
+    }
+
+    if (satip_session_start(&session, opt, &channel) != TUNE_RESULT_OK) {
+        fprintf(stderr, "SAT>IP tuner did not lock the requested transponder.\n");
+        if (dump != NULL) fclose(dump);
+        CLOSESOCKET(output_udp);
+        return EXIT_FAILURE;
+    }
+
+    format_host_for_url(opt->vlc_ip, vlc_url_host, sizeof(vlc_url_host));
+    printf("Forwarding SAT>IP MPEG-TS to udp://@%s:%u\n",
+           vlc_url_host, (unsigned)opt->vlc_port);
+    printf("Press Ctrl+C to stop.\n");
+
+    while (g_running) {
+        socket_io_t received;
+        int offset;
+        size_t available;
+        size_t aligned_length;
+        size_t forwarded;
+        double now;
+
+        if (!satip_session_keepalive(&session, opt)) {
+            fprintf(stderr, "SAT>IP keepalive failed; reconnecting.\n");
+            if (satip_session_start(&session, opt, &channel) != TUNE_RESULT_OK) {
+                goto fail;
+            }
+            consecutive_timeouts = 0U;
+        }
+
+        received = satip_session_receive(&session, payload, sizeof(payload));
+        if (received <= 0) {
+            ++timeouts;
+            ++consecutive_timeouts;
+            if (consecutive_timeouts >= 5U) {
+                fprintf(stderr, "SAT>IP stream stalled; reconnecting and retuning.\n");
+                if (satip_session_start(&session, opt, &channel) !=
+                    TUNE_RESULT_OK) {
+                    goto fail;
+                }
+                consecutive_timeouts = 0U;
+            }
+            continue;
+        }
+        consecutive_timeouts = 0U;
+        offset = find_ts_offset(payload, (size_t)received);
+        if (offset < 0) continue;
+        available = (size_t)received - (size_t)offset;
+        aligned_length = available - (available % TS_PACKET_SIZE);
+        forwarded = forward_ts(output_udp, &vlc_endpoint, dump, &keys,
+                               payload + offset, aligned_length, &stats);
+        bytes_forwarded += forwarded;
+        packets += aligned_length / TS_PACKET_SIZE;
+
+        now = monotonic_seconds();
+        if (now - report_start >= 2.0) {
+            const double elapsed = now - report_start;
+            const double mbps = elapsed > 0.0
+                ? (double)bytes_forwarded * 8.0 / elapsed / 1000000.0 : 0.0;
+            printf("\rTS packets: %llu  Output: %.2f Mbit/s  Timeouts: %llu      ",
+                   (unsigned long long)packets, mbps,
+                   (unsigned long long)timeouts);
+            fflush(stdout);
+            bytes_forwarded = 0U;
+            report_start = now;
+        }
+    }
+
+    printf("\nStopping.\n");
+    satip_session_stop(&session, true);
+    if (dump != NULL) {
+        fflush(dump);
+        fclose(dump);
+    }
+    CLOSESOCKET(output_udp);
+    return EXIT_SUCCESS;
+
+fail:
+    satip_session_stop(&session, false);
+    if (dump != NULL) fclose(dump);
+    if (output_udp != SOCKET_INVALID) CLOSESOCKET(output_udp);
+    return EXIT_FAILURE;
+}
+
+
 static bool xml_name_char(char ch)
 {
     return isalnum((unsigned char)ch) != 0 || ch == '_' ||
@@ -3940,6 +4719,8 @@ static bool parse_channel_tag(const char *tag, channel_t *channel)
     size_t i;
 
     memset(channel, 0, sizeof(*channel));
+    snprintf(channel->msys, sizeof(channel->msys), "%s", "auto");
+    snprintf(channel->pids, sizeof(channel->pids), "%s", "all");
     if (!xml_attribute(tag, "type", channel->type, sizeof(channel->type)) ||
         !xml_attribute(tag, "pol", text, sizeof(text)) ||
         !parse_polarization(text, &channel->polarization) ||
@@ -3973,6 +4754,14 @@ static bool parse_channel_tag(const char *tag, channel_t *channel)
     }
     if (xml_attribute(tag, "ts_id", text, sizeof(text))) {
         (void)parse_u32(text, &channel->transport_stream_id);
+    }
+    if (xml_attribute(tag, "msys", text, sizeof(text)) &&
+        !parse_satip_msys(text, channel->msys)) {
+        return false;
+    }
+    if (xml_attribute(tag, "pids", text, sizeof(text)) &&
+        !parse_satip_pids(text, channel->pids)) {
+        return false;
     }
     if (xml_attribute(tag, "fta", text, sizeof(text)) &&
         parse_u32(text, &number)) {
@@ -6613,6 +7402,7 @@ typedef struct {
     size_t max_clients;
     socket_t dongle_udp;
     endpoint_t dongle_endpoint;
+    satip_session_t satip;
     const channel_t *channel;
     stream_keys_t keys;
     stream_stats_t stats;
@@ -7786,7 +8576,10 @@ static void send_http_redirect(http_connection_t *connection,
 
 static bool live_config_key(const char *key)
 {
-    return strcmp(key, "max_clients") == 0 ||
+    return strcmp(key, "device_type") == 0 ||
+           strcmp(key, "satip_source") == 0 ||
+           strcmp(key, "satip_msys") == 0 ||
+           strcmp(key, "max_clients") == 0 ||
            strcmp(key, "wait_ms") == 0 ||
            strcmp(key, "timeout_ms") == 0 ||
            strcmp(key, "missing_key") == 0 ||
@@ -7821,6 +8614,9 @@ static bool update_live_config_file(const options_t *opt)
     FILE *output;
     char temporary[1400];
     char line[4096];
+    bool wrote_device_type = false;
+    bool wrote_satip_source = false;
+    bool wrote_satip_msys = false;
     bool wrote_max = false;
     bool wrote_wait = false;
     bool wrote_timeout = false;
@@ -7878,7 +8674,19 @@ static bool update_live_config_file(const options_t *opt)
             key = trim_config_text(text);
             normalize_config_key(key);
             if (live_config_key(key)) {
-                if (strcmp(key, "max_clients") == 0) {
+                if (strcmp(key, "device_type") == 0) {
+                    fprintf(output, "device_type=%s\n",
+                            opt->device_backend == DEVICE_BACKEND_SATIP ?
+                            "satip" : "legacy");
+                    wrote_device_type = true;
+                } else if (strcmp(key, "satip_source") == 0) {
+                    fprintf(output, "satip_source=%u\n",
+                            (unsigned)opt->satip_source);
+                    wrote_satip_source = true;
+                } else if (strcmp(key, "satip_msys") == 0) {
+                    fprintf(output, "satip_msys=%s\n", opt->satip_msys);
+                    wrote_satip_msys = true;
+                } else if (strcmp(key, "max_clients") == 0) {
                     fprintf(output, "max_clients=%u\n",
                             (unsigned)opt->max_http_clients);
                     wrote_max = true;
@@ -7988,6 +8796,13 @@ static bool update_live_config_file(const options_t *opt)
         }
         fputs(line, output);
     }
+    if (!wrote_device_type)
+        fprintf(output, "device_type=%s\n",
+                opt->device_backend == DEVICE_BACKEND_SATIP ? "satip" : "legacy");
+    if (!wrote_satip_source)
+        fprintf(output, "satip_source=%u\n", (unsigned)opt->satip_source);
+    if (!wrote_satip_msys)
+        fprintf(output, "satip_msys=%s\n", opt->satip_msys);
     if (!wrote_max) {
         fprintf(output, "max_clients=%u\n", (unsigned)opt->max_http_clients);
     }
@@ -8274,6 +9089,10 @@ static void http_stream_stop_if_idle(http_stream_t *stream)
             CLOSESOCKET(stream->dongle_udp);
             stream->dongle_udp = SOCKET_INVALID;
         }
+        if (stream->satip.active || stream->satip.rtsp != SOCKET_INVALID ||
+            stream->satip.rtp != SOCKET_INVALID) {
+            satip_session_stop(&stream->satip, true);
+        }
         stream->channel = NULL;
         stream->retry_flag = 0;
         stream->consecutive_timeouts = 0;
@@ -8366,6 +9185,64 @@ static stream_step_t http_stream_service(http_stream_t *stream,
     const int response_wait_ms = opt->timeout_ms < 500 ? opt->timeout_ms : 500;
 
     if (http_stream_client_count(stream) == 0U) {
+        http_stream_stop_if_idle(stream);
+        return STREAM_STEP_OK;
+    }
+    if (opt->device_backend == DEVICE_BACKEND_SATIP) {
+        if (!satip_session_keepalive(&stream->satip, opt)) {
+            return STREAM_STEP_RECOVER;
+        }
+        if (stream->satip.pending_length == 0U) {
+            ready = satip_wait_readable(stream->satip.rtp, response_wait_ms);
+            if (ready < 0) return STREAM_STEP_FATAL;
+            if (ready == 0) {
+                ++stream->timeouts;
+                ++stream->consecutive_timeouts;
+                return stream->consecutive_timeouts >= 5U
+                    ? STREAM_STEP_RECOVER : STREAM_STEP_OK;
+            }
+        }
+        received = satip_session_receive(&stream->satip, reply, sizeof(reply));
+        if (received <= 0) {
+            ++stream->timeouts;
+            ++stream->consecutive_timeouts;
+            return stream->consecutive_timeouts >= 5U
+                ? STREAM_STEP_RECOVER : STREAM_STEP_OK;
+        }
+        stream->consecutive_timeouts = 0U;
+        offset = find_ts_offset(reply, (size_t)received);
+        if (offset < 0) {
+            ++stream->bad_blocks;
+            return STREAM_STEP_OK;
+        }
+        available = (size_t)received - (size_t)offset;
+        aligned_length = available - (available % TS_PACKET_SIZE);
+        forwarded = forward_ts_http_clients(stream, reply + offset,
+                                            aligned_length);
+        stream->bytes_forwarded += forwarded;
+        stream->total_bytes_forwarded += forwarded;
+        ++stream->blocks;
+
+        if (monotonic_seconds() - stream->report_start >= 2.0) {
+            const double report_now = monotonic_seconds();
+            const double elapsed = report_now - stream->report_start;
+            const double mbps = elapsed > 0.0
+                ? (double)stream->bytes_forwarded * 8.0 / elapsed / 1000000.0
+                : 0.0;
+            stream->last_mbps = mbps;
+            printf("\rSAT>IP clients: %zu  RTP blocks: %llu  Output: %.2f Mbit/s  "
+                   "Timeouts: %llu  Bad: %llu      ",
+                   http_stream_client_count(stream),
+                   (unsigned long long)stream->blocks,
+                   mbps,
+                   (unsigned long long)stream->timeouts,
+                   (unsigned long long)(stream->bad_blocks +
+                                        stream->stats.invalid_packets +
+                                        stream->stats.reserved_scrambling));
+            fflush(stdout);
+            stream->bytes_forwarded = 0U;
+            stream->report_start = report_now;
+        }
         http_stream_stop_if_idle(stream);
         return STREAM_STEP_OK;
     }
@@ -8576,12 +9453,15 @@ static void serve_admin_api_status(http_connection_t *connection,
             !string_buffer_appendf(&body,
             ",\"type\":\"%s\",\"frequency_mhz\":%u,"
             "\"symbol_rate_ks\":%u,\"polarization\":\"%c\","
-            "\"service_id\":%u}",
+            "\"service_id\":%u,\"msys\":\"%s\",\"pids\":",
             stream->channel->type,
             (unsigned)stream->channel->frequency_mhz,
             (unsigned)stream->channel->symbol_rate_ks,
             stream->channel->polarization,
-            (unsigned)stream->channel->service_id)) {
+            (unsigned)stream->channel->service_id,
+            stream->channel->msys) ||
+            !string_buffer_append_json_string(&body, stream->channel->pids) ||
+            !string_buffer_append(&body, "}")) {
             goto overflow;
         }
     }
@@ -8615,6 +9495,10 @@ static void serve_admin_api_status(http_connection_t *connection,
                 (unsigned)channel->transport_stream_id,
                 channel->fta ? "true" : "false") ||
             !string_buffer_append_json_string(&body, channel->epg_id) ||
+            !string_buffer_append(&body, ",\"msys\":") ||
+            !string_buffer_append_json_string(&body, channel->msys) ||
+            !string_buffer_append(&body, ",\"pids\":") ||
+            !string_buffer_append_json_string(&body, channel->pids) ||
             !string_buffer_appendf(&body, ",\"stream_url\":\"/channel/%u\",\"now\":",
                                    (unsigned)channel->lcn) ||
             !append_epg_summary_json(&body, current) ||
@@ -8659,12 +9543,18 @@ static void serve_admin_api_status(http_connection_t *connection,
     if (!string_buffer_appendf(&body,
         "],\"config\":{\"wait_ms\":%d,\"timeout_ms\":%d,"
         "\"missing_key\":\"%s\",\"config_active\":%s,"
-        "\"viewer_auth\":%s,\"admin_auth\":%s,\"channels_path\":",
+        "\"viewer_auth\":%s,\"admin_auth\":%s,"
+        "\"device_type\":\"%s\",\"control_port\":%u,"
+        "\"satip_source\":%u,\"satip_msys\":\"%s\","
+        "\"channels_path\":",
         opt->wait_ms, opt->timeout_ms,
         opt->missing_key_policy == MISSING_KEY_DROP ? "drop" : "pass",
         opt->config_path != NULL ? "true" : "false",
         opt->http_user != NULL ? "true" : "false",
-        opt->admin_user != NULL ? "true" : "false") ||
+        opt->admin_user != NULL ? "true" : "false",
+        opt->device_backend == DEVICE_BACKEND_SATIP ? "satip" : "legacy",
+        (unsigned)opt->control_port, (unsigned)opt->satip_source,
+        opt->satip_msys) ||
         !string_buffer_append_json_string(&body, opt->channels_path) ||
         !string_buffer_append(&body, ",\"config_path\":") ||
         !string_buffer_append_json_string(&body,
@@ -9078,6 +9968,14 @@ static void handle_admin_post(http_connection_t *connection,
         return;
     }
 
+    if (opt->device_backend == DEVICE_BACKEND_SATIP &&
+        strncmp(path, "/admin/device/", 14) == 0) {
+        send_http_error(connection, 501, "Not Implemented",
+                        "SAT>IP receivers do not expose SORALink's proprietary channel database, EPG update, or scan commands. Use the local channels/XMLTV files instead.\n",
+                        false);
+        return;
+    }
+
     if (strcmp(path, "/admin/device/update-channels") == 0 ||
         strcmp(path, "/admin/device/update-epg") == 0 ||
         strcmp(path, "/admin/device/update-all") == 0) {
@@ -9337,12 +10235,18 @@ static void handle_admin_post(http_connection_t *connection,
         opt->lnb_high_mhz = lnb_high;
         opt->lnb_switch_mhz = lnb_switch;
         opt->diseqc_port = diseqc;
+        if (opt->device_backend == DEVICE_BACKEND_SATIP) {
+            opt->device_channels_update = false;
+            opt->device_epg_update = false;
+            opt->device_update_on_start = false;
+            opt->device_scan_refresh_minutes = 0U;
+        }
         updates->next_channels_due = monotonic_seconds() +
-            (double)device_channels_minutes * 60.0;
+            (double)opt->device_channels_refresh_minutes * 60.0;
         updates->next_epg_due = monotonic_seconds() +
-            (double)device_epg_minutes * 60.0;
+            (double)opt->device_epg_refresh_minutes * 60.0;
         updates->next_scan_due = monotonic_seconds() +
-            (double)device_scan_minutes * 60.0;
+            (double)opt->device_scan_refresh_minutes * 60.0;
         stream->max_clients = (size_t)max_clients;
         stream->keys.missing_policy = opt->missing_key_policy;
 
@@ -9385,6 +10289,7 @@ static int run_http_server(socket_t *control, options_t *opt)
     memset(&admin_sessions, 0, sizeof(admin_sessions));
     snprintf(updates.last_message, sizeof(updates.last_message), "No device update has run yet");
     stream.dongle_udp = SOCKET_INVALID;
+    satip_session_init(&stream.satip);
     stream.max_clients = (size_t)opt->max_http_clients;
     stream.report_start = monotonic_seconds();
     stream.server_started = stream.report_start;
@@ -9434,28 +10339,30 @@ static int run_http_server(socket_t *control, options_t *opt)
 
     memset(&tuning, 0, sizeof(tuning));
 
-    if (*control == SOCKET_INVALID &&
-        !reconnect_control_session(control, opt)) {
-        fprintf(stderr,
-                "Could not restore device control after startup maintenance.\n");
-        free_epg_list(&epg);
-        free_channel_list(&channels);
-        device_update_state_free(&updates);
-        return EXIT_FAILURE;
-    }
+    if (opt->device_backend == DEVICE_BACKEND_LEGACY) {
+        if (*control == SOCKET_INVALID &&
+            !reconnect_control_session(control, opt)) {
+            fprintf(stderr,
+                    "Could not restore device control after startup maintenance.\n");
+            free_epg_list(&epg);
+            free_channel_list(&channels);
+            device_update_state_free(&updates);
+            return EXIT_FAILURE;
+        }
 
-    if (!resolve_endpoint(opt->device_ip, opt->stream_port,
-                          SOCK_DGRAM, false, &stream.dongle_endpoint)) {
-        free_epg_list(&epg);
-        free_channel_list(&channels);
-        device_update_state_free(&updates);
-        return EXIT_FAILURE;
-    }
-    if (!configure_satellite(*control, opt)) {
-        free_epg_list(&epg);
-        free_channel_list(&channels);
-        device_update_state_free(&updates);
-        return EXIT_FAILURE;
+        if (!resolve_endpoint(opt->device_ip, opt->stream_port,
+                              SOCK_DGRAM, false, &stream.dongle_endpoint)) {
+            free_epg_list(&epg);
+            free_channel_list(&channels);
+            device_update_state_free(&updates);
+            return EXIT_FAILURE;
+        }
+        if (!configure_satellite(*control, opt)) {
+            free_epg_list(&epg);
+            free_channel_list(&channels);
+            device_update_state_free(&updates);
+            return EXIT_FAILURE;
+        }
     }
     if (!tls_server_init(&tls, opt)) {
         free_epg_list(&epg);
@@ -9534,7 +10441,8 @@ static int run_http_server(socket_t *control, options_t *opt)
         int ready;
         double now = monotonic_seconds();
 
-        if (now - last_heartbeat >= 5.0) {
+        if (opt->device_backend == DEVICE_BACKEND_LEGACY &&
+            now - last_heartbeat >= 5.0) {
             if (!send_heartbeat(*control, opt->verbose)) {
                 fprintf(stderr, "Control heartbeat failed; attempting recovery.\n");
                 if (recover_http_control(control, opt, stream.channel, &tuning) !=
@@ -9806,18 +10714,27 @@ static int run_http_server(socket_t *control, options_t *opt)
                                             false);
                         } else {
                             if (http_stream_client_count(&stream) == 0U) {
-                                tune_result_t tune_result =
-                                    tune_channel(*control, opt, channel, &tuning);
-                                if (tune_result == TUNE_RESULT_CONTROL_ERROR) {
-                                    fprintf(stderr,
-                                            "Channel control command failed; reconnecting and retrying.\n");
-                                    tune_result = recover_http_control(
-                                        control, opt, channel, &tuning);
-                                    last_heartbeat = monotonic_seconds();
+                                tune_result_t tune_result;
+                                bool transport_ready;
+                                if (opt->device_backend == DEVICE_BACKEND_SATIP) {
+                                    tune_result = satip_session_start(
+                                        &stream.satip, opt, channel);
+                                    transport_ready = tune_result == TUNE_RESULT_OK;
+                                } else {
+                                    tune_result =
+                                        tune_channel(*control, opt, channel, &tuning);
+                                    if (tune_result == TUNE_RESULT_CONTROL_ERROR) {
+                                        fprintf(stderr,
+                                                "Channel control command failed; reconnecting and retrying.\n");
+                                        tune_result = recover_http_control(
+                                            control, opt, channel, &tuning);
+                                        last_heartbeat = monotonic_seconds();
+                                    }
+                                    transport_ready = tune_result == TUNE_RESULT_OK &&
+                                        http_stream_open_udp(&stream,
+                                                             opt->timeout_ms);
                                 }
-                                if (tune_result != TUNE_RESULT_OK ||
-                                    !http_stream_open_udp(&stream,
-                                                          opt->timeout_ms)) {
+                                if (!transport_ready) {
                                     send_http_error(&connection, 503,
                                                     "Service Unavailable",
                                                     "SORALink could not lock this channel.\n",
@@ -9866,11 +10783,14 @@ static int run_http_server(socket_t *control, options_t *opt)
                         "Stream transport stalled; reconnecting and retuning.\n");
                 {
                     const tune_result_t recover_result =
+                        opt->device_backend == DEVICE_BACKEND_SATIP ?
+                        satip_session_start(&stream.satip, opt, stream.channel) :
                         recover_http_control(control, opt, stream.channel, &tuning);
                     if (recover_result != TUNE_RESULT_OK) {
                         http_stream_close_clients(&stream);
                         http_stream_stop_if_idle(&stream);
-                        if (recover_result == TUNE_RESULT_CONTROL_ERROR) {
+                        if (opt->device_backend == DEVICE_BACKEND_LEGACY &&
+                            recover_result == TUNE_RESULT_CONTROL_ERROR) {
                             result = EXIT_FAILURE;
                             break;
                         }
@@ -9893,6 +10813,7 @@ static int run_http_server(socket_t *control, options_t *opt)
 
     printf("\nStopping HTTP server.\n");
     http_stream_close_clients(&stream);
+    satip_session_stop(&stream.satip, true);
     if (stream.dongle_udp != SOCKET_INVALID) {
         CLOSESOCKET(stream.dongle_udp);
     }
@@ -9998,15 +10919,44 @@ static bool run_self_tests(void)
                stats.odd_decrypted == 1U,
                "Odd-key packet decrypts when an odd key is configured");
 
+    {
+        device_backend_t backend = DEVICE_BACKEND_LEGACY;
+        char msys[8];
+        char pids[512];
+        uint8_t rtp[12U + TS_PACKET_SIZE];
+        uint8_t *rtp_payload = NULL;
+        size_t rtp_payload_length = 0U;
+        memset(rtp, 0, sizeof(rtp));
+        rtp[0] = 0x80U;
+        rtp[1] = 33U;
+        rtp[12] = 0x47U;
+        TEST_CHECK(parse_device_backend("digibit", &backend) &&
+                   backend == DEVICE_BACKEND_SATIP &&
+                   parse_satip_msys("DVBS2", msys) &&
+                   strcmp(msys, "dvbs2") == 0 &&
+                   parse_satip_pids("0,17,8191", pids) &&
+                   strcmp(pids, "0,17,8191") == 0 &&
+                   !parse_satip_pids("8192", pids),
+                   "SAT>IP backend, delivery-system, and PID parsing");
+        TEST_CHECK(satip_rtp_payload(rtp, sizeof(rtp),
+                                     &rtp_payload, &rtp_payload_length) &&
+                   rtp_payload == rtp + 12U &&
+                   rtp_payload_length == TS_PACKET_SIZE,
+                   "SAT>IP RTP header extraction");
+    }
+
     TEST_CHECK(parse_channel_tag(
         "<ch\n type='tv' pol='F' sym='22000' s_id='101'\n"
         " freq='11500' lcn='7' s_name='News &amp; Sport &#x2605;' "
-        "fta='1' epg_id='news.example' prog_idx='1085734912' ts_id='1011'>",
+        "fta='1' epg_id='news.example' prog_idx='1085734912' ts_id='1011' "
+        "msys='dvbs2' pids='0,17,101,102'>",
         &channel) && channel.polarization == 'F' &&
         strcmp(channel.type, "TV") == 0 &&
         strcmp(channel.epg_id, "news.example") == 0 &&
         channel.have_program_index && channel.program_index == 1085734912U &&
         channel.transport_stream_id == 1011U &&
+        strcmp(channel.msys, "dvbs2") == 0 &&
+        strcmp(channel.pids, "0,17,101,102") == 0 &&
         strstr(channel.name, "News & Sport") != NULL && channel.fta,
         "Multiline channel XML, EPG ID, and named/numeric entities");
 
@@ -10240,7 +11190,28 @@ int main(int argc, char **argv)
         goto cleanup;
     }
 
-    printf("Connecting to device at %s:%u...\n",
+    if (opt.device_backend == DEVICE_BACKEND_SATIP) {
+        printf("Connecting to SAT>IP server at %s:%u...\n",
+               opt.device_ip, (unsigned)opt.control_port);
+        if (!satip_probe_server(&opt)) {
+            fprintf(stderr,
+                    "The SAT>IP RTSP endpoint is not reachable or did not accept OPTIONS.\n");
+            goto cleanup;
+        }
+        if (opt.probe_only) {
+            printf("Probe completed successfully.\n");
+            result = EXIT_SUCCESS;
+            goto cleanup;
+        }
+        if (opt.http_server) {
+            result = run_http_server(&control, &opt);
+            goto cleanup;
+        }
+        result = stream_satip_to_vlc(&opt);
+        goto cleanup;
+    }
+
+    printf("Connecting to legacy device at %s:%u...\n",
            opt.device_ip, (unsigned)opt.control_port);
 
     control = connect_tcp(opt.device_ip, opt.control_port, opt.timeout_ms);
